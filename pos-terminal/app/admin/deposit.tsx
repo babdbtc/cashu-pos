@@ -31,7 +31,7 @@ export default function DepositScreen() {
                         clearInterval(interval);
                         setStatus('Minting tokens...');
                         const proofs = await mintTokens(primaryMintUrl, parseInt(amount), invoice.quote);
-                        addProofs(proofs);
+                        addProofs(proofs, primaryMintUrl);
                         Alert.alert('Success', 'Deposit successful!');
                         router.back();
                     }

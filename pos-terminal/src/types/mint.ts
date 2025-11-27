@@ -35,6 +35,7 @@ export interface Proof {
   C: string;
   id: string; // keyset id
   witness?: any;
+  mintUrl?: string; // Track which mint this proof came from
 }
 
 

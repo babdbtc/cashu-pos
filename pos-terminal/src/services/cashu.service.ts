@@ -5,6 +5,9 @@
  * swapping, and mint interactions.
  */
 
+// CRITICAL: Import crypto polyfill before any crypto-dependent code
+import '@/lib/crypto-polyfill';
+
 import {
   Mint,
   Wallet,

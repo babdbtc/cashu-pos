@@ -106,6 +106,35 @@ function calculateUnitPrice(
   return price;
 }
 
+// Check if two cart items are equivalent (same product, variant, and modifiers)
+function areItemsEquivalent(
+  item: CartItem,
+  product: Product,
+  variant?: ProductVariant,
+  modifiers: SelectedModifier[] = []
+): boolean {
+  // Must be same product
+  if (item.product.id !== product.id) return false;
+
+  // Must have same variant (or both undefined)
+  const itemVariantId = item.variant?.id;
+  const newVariantId = variant?.id;
+  if (itemVariantId !== newVariantId) return false;
+
+  // Must have same modifiers
+  const itemModifierIds = (item.selectedModifiers || [])
+    .map(m => m.modifier.id)
+    .sort()
+    .join(',');
+  const newModifierIds = modifiers
+    .map(m => m.modifier.id)
+    .sort()
+    .join(',');
+  if (itemModifierIds !== newModifierIds) return false;
+
+  return true;
+}
+
 // Create empty cart
 function createEmptyCart(): Cart {
   return {
@@ -140,12 +169,29 @@ export const useCartStore = create<CartState>()(
       taxInclusive: false,
       defaultTaxRate: 0,
 
-      // Add item to cart
+      // Add item to cart (or increment quantity if identical item exists)
       addToCart: (params) => {
         const { product, variant, modifiers = [], quantity = 1, notes } = params;
 
+        // Check if an identical item already exists in cart
+        const existingItem = get().cart.items.find(item =>
+          areItemsEquivalent(item, product, variant, modifiers)
+        );
+
+        if (existingItem) {
+          // Increment quantity of existing item
+          const newQuantity = existingItem.quantity + quantity;
+          get().updateCartItem({
+            itemId: existingItem.id,
+            quantity: newQuantity,
+            // Optionally append notes if provided
+            notes: notes ? (existingItem.notes ? `${existingItem.notes}; ${notes}` : notes) : existingItem.notes,
+          });
+          return;
+        }
+
+        // No matching item found - add as new item
         const unitPrice = calculateUnitPrice(product, variant, modifiers);
-        const taxRate = product.tax_rate ?? get().defaultTaxRate;
 
         const newItem: CartItem = {
           id: generateCartItemId(),

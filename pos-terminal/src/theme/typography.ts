@@ -77,6 +77,11 @@ export const typography = {
     fontWeight: '600',
   } as TextStyle,
 
+  buttonSmall: {
+    fontSize: 14,
+    fontWeight: '600',
+  } as TextStyle,
+
   // Monospace for IDs, codes
   mono: {
     fontSize: 14,

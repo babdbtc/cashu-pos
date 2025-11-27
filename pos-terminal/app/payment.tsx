@@ -1,7 +1,7 @@
 /**
  * Payment Screen
  *
- * Displays payment details and waits for NFC tap or Lightning payment.
+ * Displays payment details and waits for NFC tap, QR scan, or Lightning payment.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -9,6 +9,7 @@ import { View, Text, StyleSheet, Pressable, Animated, Easing, ActivityIndicator 
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import QRCode from 'react-native-qrcode-svg';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { colors, spacing, typography, borderRadius } from '@/theme';
@@ -40,6 +41,10 @@ export default function PaymentScreen() {
   const [isListening, setIsListening] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<ReturnType<typeof setInterval> | null>(null);
+
+  // QR Scanner state
+  const [showScanner, setShowScanner] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -73,12 +78,12 @@ export default function PaymentScreen() {
     return () => pulse.stop();
   }, [pulseAnim]);
 
-  // Start NFC listening when in Cashu mode
+  // Start NFC listening when in Cashu mode (and not showing scanner)
   useEffect(() => {
-    if (paymentMethod === 'cashu' && !isListening) {
+    if (paymentMethod === 'cashu' && !isListening && !showScanner) {
       startNFCListening();
-    } else if (paymentMethod !== 'cashu') {
-      // Stop NFC if switching away
+    } else if (paymentMethod !== 'cashu' || showScanner) {
+      // Stop NFC if switching away or showing scanner
       nfcService.cancelReading().catch(() => { });
       setIsListening(false);
     }
@@ -86,7 +91,7 @@ export default function PaymentScreen() {
     return () => {
       nfcService.cancelReading().catch(() => { });
     };
-  }, [paymentMethod]);
+  }, [paymentMethod, showScanner]);
 
   // Handle Lightning Invoice Generation
   useEffect(() => {
@@ -161,8 +166,8 @@ export default function PaymentScreen() {
       // Mint tokens
       const proofs = await mintTokens(primaryMintUrl, currentPayment.satsAmount, quoteId);
 
-      // Add to wallet
-      addProofs(proofs);
+      // Add to wallet with mint URL
+      addProofs(proofs, primaryMintUrl);
 
       completePayment(`ln_${quoteId.substring(0, 8)}`);
       router.replace('/result');
@@ -185,7 +190,7 @@ export default function PaymentScreen() {
       });
     } catch (error) {
       console.error('NFC Error:', error);
-      // Continue without NFC - user can still use Lightning
+      // Continue without NFC - user can still use Lightning or QR scan
     }
   };
 
@@ -201,10 +206,11 @@ export default function PaymentScreen() {
 
       // Swap tokens (receive)
       // Use the mint from the token
-      const { proofs } = await swapTokens(parsed.token.mint, parsed.token.proofs);
+      const mintUrl = parsed.token.mint;
+      const { proofs } = await swapTokens(mintUrl, parsed.token.proofs);
 
-      // Add to wallet
-      addProofs(proofs);
+      // Add to wallet with mint URL
+      addProofs(proofs, mintUrl);
 
       completePayment(`tx_${Date.now()}`);
       router.replace('/result');
@@ -212,6 +218,28 @@ export default function PaymentScreen() {
       console.error("Failed to receive token:", error);
       failPayment("Failed to process payment token. " + (error instanceof Error ? error.message : ""));
     }
+  };
+
+  const handleScanQR = () => {
+    if (!permission?.granted) {
+      requestPermission();
+      return;
+    }
+    // Stop NFC when showing scanner
+    nfcService.cancelReading().catch(() => { });
+    setIsListening(false);
+    setShowScanner(true);
+  };
+
+  const handleBarCodeScanned = ({ data }: { data: string }) => {
+    setShowScanner(false);
+    // Clean up the token - handle cashu: prefix if present
+    let cleanToken = data.trim();
+    if (cleanToken.toLowerCase().startsWith('cashu:')) {
+      cleanToken = cleanToken.slice(6);
+    }
+    // Process the scanned token
+    handleTokenReceived(cleanToken);
   };
 
   const handleCancel = () => {
@@ -238,6 +266,48 @@ export default function PaymentScreen() {
   }
 
   const { satsAmount, fiatAmount, fiatCurrency } = currentPayment;
+
+  // QR Scanner View
+  if (showScanner) {
+    return (
+      <Screen style={styles.scannerScreen}>
+        <View style={styles.scannerHeader}>
+          <Button
+            title="Cancel"
+            onPress={() => setShowScanner(false)}
+            variant="ghost"
+            size="sm"
+          />
+          <Text style={styles.scannerTitle}>Scan Cashu Token</Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        <View style={styles.scannerAmountBadge}>
+          <Text style={styles.scannerAmountText}>
+            {satsAmount.toLocaleString()} sats
+          </Text>
+        </View>
+
+        <View style={styles.cameraContainer}>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
+            onBarcodeScanned={handleBarCodeScanned}
+          />
+          <View style={styles.scanOverlay}>
+            <View style={styles.scanFrame} />
+          </View>
+        </View>
+
+        <Text style={styles.scanHint}>
+          Scan the customer's Cashu token QR code
+        </Text>
+      </Screen>
+    );
+  }
 
   return (
     <Screen style={styles.screen}>
@@ -274,7 +344,7 @@ export default function PaymentScreen() {
               paymentMethod === 'cashu' && styles.methodTabTextActive,
             ]}
           >
-            Cashu (NFC)
+            Cashu
           </Text>
         </Pressable>
 
@@ -311,6 +381,23 @@ export default function PaymentScreen() {
             <Text style={styles.tapText}>Tap to Pay</Text>
             <Text style={styles.instructionText}>
               Hold customer's device near the terminal
+            </Text>
+
+            {/* QR Scan Option */}
+            <View style={styles.orDivider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.orText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Button
+              title="Scan QR Code"
+              onPress={handleScanQR}
+              variant="secondary"
+              size="md"
+            />
+            <Text style={styles.qrHintText}>
+              Scan customer's Cashu token QR
             </Text>
           </View>
         ) : (
@@ -434,7 +521,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xl,
   },
   nfcIcon: {
     fontSize: 32,
@@ -450,6 +537,28 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
     marginTop: spacing.md,
+  },
+  orDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.xl,
+    width: '100%',
+    paddingHorizontal: spacing.xl,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border.default,
+  },
+  orText: {
+    ...typography.bodySmall,
+    color: colors.text.muted,
+    paddingHorizontal: spacing.md,
+  },
+  qrHintText: {
+    ...typography.caption,
+    color: colors.text.muted,
+    marginTop: spacing.sm,
   },
   lightningContainer: {
     alignItems: 'center',
@@ -499,5 +608,62 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingTop: spacing.lg,
+  },
+  // Scanner styles
+  scannerScreen: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.md,
+    paddingTop: spacing.lg,
+  },
+  scannerTitle: {
+    ...typography.h4,
+    color: colors.text.primary,
+  },
+  scannerAmountBadge: {
+    backgroundColor: colors.accent.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.round,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  scannerAmountText: {
+    ...typography.button,
+    color: colors.text.inverse,
+  },
+  cameraContainer: {
+    flex: 1,
+    margin: spacing.md,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  camera: {
+    flex: 1,
+  },
+  scanOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: colors.accent.primary,
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'transparent',
+  },
+  scanHint: {
+    ...typography.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    padding: spacing.lg,
   },
 });

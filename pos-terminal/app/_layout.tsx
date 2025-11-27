@@ -4,6 +4,9 @@
  * Configures navigation and global providers for the app.
  */
 
+// IMPORTANT: Crypto polyfill must be imported first, before any crypto-dependent libraries
+import '@/lib/crypto-polyfill';
+
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
