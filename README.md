@@ -8,7 +8,7 @@ A self-hosted payment processing system using Cashu ecash, enabling Lightning-co
 - **Lightning Integration** - Generate Lightning invoices via Cashu mints
 - **Offline Support** - Queue payments when offline, process when back online
 - **Full POS System** - Product catalog, cart, modifiers, and tips
-- **Live Exchange Rates** - Real-time BTC/fiat conversion via CoinGecko/Kraken
+- **Live Exchange Rates** - Real-time BTC/fiat conversion
 - **Receipt Printing** - Generate and print HTML/PDF receipts
 - **Refund Processing** - Full and partial refunds with QR code tokens
 - **Transaction Export** - CSV/JSON export for accounting
