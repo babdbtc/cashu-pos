@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@callstack/liquid-glass": "^0.6.0",
     "@cashu/cashu-ts": "^3.1.1",
     "@expo/metro-runtime": "^6.1.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -21,6 +22,7 @@
     "decimal.js": "^10.6.0",
     "expo": "~54.0.25",
     "expo-av": "^16.0.7",
+    "expo-blur": "^15.0.7",
     "expo-camera": "^17.0.9",
     "expo-constants": "^18.0.10",
     "expo-crypto": "^15.0.7",

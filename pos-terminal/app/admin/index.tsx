@@ -5,11 +5,28 @@ import { Button } from '@/components/ui';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { useWalletStore, MintBalance } from '@/store/wallet.store';
 import { useConfigStore } from '@/store/config.store';
+import { useAlert } from '@/hooks/useAlert';
 
 export default function AdminDashboard() {
     const router = useRouter();
-    const { balance, proofs, getBalancesByMint, getTestnetBalance, getMainnetBalance } = useWalletStore();
+    const { balance, proofs, getBalancesByMint, getTestnetBalance, getMainnetBalance, clearWallet } = useWalletStore();
     const { currency } = useConfigStore();
+    const { confirm, success } = useAlert();
+
+    const handleClearWallet = () => {
+        if (balance === 0) {
+            success('Wallet Empty', 'There are no tokens to clear.');
+            return;
+        }
+        confirm(
+            'Clear Wallet',
+            `Are you sure you want to delete all ${proofs.length} tokens (${balance.toLocaleString()} sats)? This action cannot be undone.`,
+            () => {
+                clearWallet();
+                success('Wallet Cleared', 'All tokens have been removed.');
+            }
+        );
+    };
 
     const mintBalances = getBalancesByMint();
     const testnetBalance = getTestnetBalance();
@@ -89,6 +106,15 @@ export default function AdminDashboard() {
                     </Pressable>
                     <Pressable style={styles.menuItem} onPress={() => router.push('/admin/export')}>
                         <Text style={styles.menuText}>Export Transactions</Text>
+                    </Pressable>
+                </View>
+
+                {/* Danger Zone */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Danger Zone</Text>
+                    <Pressable style={[styles.menuItem, styles.dangerItem]} onPress={handleClearWallet}>
+                        <Text style={styles.dangerText}>Clear Wallet</Text>
+                        <Text style={styles.dangerHint}>Remove all tokens (cannot be undone)</Text>
                     </Pressable>
                 </View>
             </ScrollView>
@@ -265,5 +291,21 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: colors.background.primary,
         textTransform: 'uppercase',
+    },
+    // Danger zone styles
+    dangerItem: {
+        borderWidth: 1,
+        borderColor: colors.status.error,
+        backgroundColor: 'transparent',
+    },
+    dangerText: {
+        ...typography.body,
+        color: colors.status.error,
+        fontWeight: '600',
+    },
+    dangerHint: {
+        ...typography.caption,
+        color: colors.text.muted,
+        marginTop: spacing.xs,
     },
 });

@@ -23,3 +23,6 @@ export { LoadingSpinner } from './LoadingSpinner';
 
 export { Toast } from './Toast';
 export type { ToastVariant, ToastProps } from './Toast';
+
+export { GlassView, GlassCard, GlassModal } from './GlassView';
+export type { GlassIntensity, GlassVariant } from './GlassView';

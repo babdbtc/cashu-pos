@@ -12,14 +12,16 @@ import {
   Pressable,
   TextInput,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAlert } from '../../src/hooks/useAlert';
 import { useConfigStore } from '../../src/store/config.store';
 import { getMintInfo, isMintOnline } from '../../src/services/cashu.service';
 
 export default function MintSettingsScreen() {
+  const { confirm } = useAlert();
+
   const [newMintUrl, setNewMintUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,20 +81,13 @@ export default function MintSettingsScreen() {
 
   const handleRemoveMint = useCallback(
     (mintUrl: string) => {
-      Alert.alert(
+      confirm(
         'Remove Mint',
         'Are you sure you want to remove this mint?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: () => removeTrustedMint(mintUrl),
-          },
-        ]
+        () => removeTrustedMint(mintUrl)
       );
     },
-    [removeTrustedMint]
+    [removeTrustedMint, confirm]
   );
 
   const handleSetPrimary = useCallback(

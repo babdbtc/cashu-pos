@@ -12,13 +12,13 @@ import {
   Pressable,
   TextInput,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 
+import { useAlert } from '../../src/hooks/useAlert';
 import { usePaymentStore } from '../../src/store/payment.store';
 import { useConfigStore } from '../../src/store/config.store';
 import { formatFiat, formatSats } from '../../src/services/exchange-rate.service';
@@ -46,6 +46,7 @@ const REFUND_REASONS: RefundReason[] = [
 export default function RefundTransactionScreen() {
   const router = useRouter();
   const { txId } = useLocalSearchParams<{ txId: string }>();
+  const { error: showError } = useAlert();
 
   const [isLoading, setIsLoading] = useState(false);
   const [refundType, setRefundType] = useState<RefundType>('full');
@@ -119,7 +120,7 @@ export default function RefundTransactionScreen() {
     }
 
     if (requiresApproval && pin.length < 4) {
-      Alert.alert('Error', 'Please enter your PIN');
+      showError('Error', 'Please enter your PIN');
       return;
     }
 
@@ -142,10 +143,10 @@ export default function RefundTransactionScreen() {
         setQrCodeData(result.qrCodeData || null);
         setShowPinInput(false);
       } else {
-        Alert.alert('Refund Failed', result.error || 'Failed to process refund');
+        showError('Refund Failed', result.error || 'Failed to process refund');
       }
     } catch (error: any) {
-      Alert.alert('Refund Failed', error.message || 'Failed to process refund');
+      showError('Refund Failed', error.message || 'Failed to process refund');
     } finally {
       setIsLoading(false);
     }

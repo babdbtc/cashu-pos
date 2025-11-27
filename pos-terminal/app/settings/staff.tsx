@@ -12,10 +12,10 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAlert } from '../../src/hooks/useAlert';
 import type { StaffRole } from '../../src/types/config';
 
 interface StaffMember {
@@ -55,6 +55,8 @@ const ROLE_INFO: Record<StaffRole, { title: string; description: string; color: 
 };
 
 export default function StaffSettingsScreen() {
+  const { error: showError, confirm } = useAlert();
+
   // Mock staff data - would be from store in production
   const [staff, setStaff] = useState<StaffMember[]>([
     { id: '1', name: 'Store Owner', role: 'owner', createdAt: new Date() },
@@ -65,7 +67,7 @@ export default function StaffSettingsScreen() {
 
   const handleAddStaff = useCallback(() => {
     if (!newStaffName.trim()) {
-      Alert.alert('Error', 'Please enter a staff name');
+      showError('Error', 'Please enter a staff name');
       return;
     }
 
@@ -79,18 +81,15 @@ export default function StaffSettingsScreen() {
     setStaff((prev) => [...prev, newMember]);
     setNewStaffName('');
     setShowAddStaff(false);
-  }, [newStaffName, newStaffRole]);
+  }, [newStaffName, newStaffRole, showError]);
 
   const handleRemoveStaff = useCallback((id: string, name: string) => {
-    Alert.alert('Remove Staff', `Are you sure you want to remove ${name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => setStaff((prev) => prev.filter((s) => s.id !== id)),
-      },
-    ]);
-  }, []);
+    confirm(
+      'Remove Staff',
+      `Are you sure you want to remove ${name}?`,
+      () => setStaff((prev) => prev.filter((s) => s.id !== id))
+    );
+  }, [confirm]);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>

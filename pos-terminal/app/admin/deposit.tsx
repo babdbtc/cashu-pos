@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
+import { useAlert } from '@/hooks/useAlert';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { useWalletStore } from '@/store/wallet.store';
 import { useConfigStore } from '@/store/config.store';
@@ -11,6 +12,7 @@ import { createMintQuote, checkMintQuote, mintTokens } from '@/services/cashu.se
 
 export default function DepositScreen() {
     const router = useRouter();
+    const { success, error: showError } = useAlert();
     const { addProofs } = useWalletStore();
     const { mints } = useConfigStore();
     const primaryMintUrl = mints.primaryMintUrl;
@@ -32,8 +34,7 @@ export default function DepositScreen() {
                         setStatus('Minting tokens...');
                         const proofs = await mintTokens(primaryMintUrl, parseInt(amount), invoice.quote);
                         addProofs(proofs, primaryMintUrl);
-                        Alert.alert('Success', 'Deposit successful!');
-                        router.back();
+                        success('Success', 'Deposit successful!', () => router.back());
                     }
                 } catch (e) {
                     console.error(e);
@@ -46,11 +47,11 @@ export default function DepositScreen() {
     const handleGenerate = async () => {
         const sats = parseInt(amount);
         if (isNaN(sats) || sats <= 0) {
-            Alert.alert('Error', 'Invalid amount');
+            showError('Error', 'Invalid amount');
             return;
         }
         if (!primaryMintUrl) {
-            Alert.alert('Error', 'No primary mint configured');
+            showError('Error', 'No primary mint configured');
             return;
         }
 
@@ -60,7 +61,7 @@ export default function DepositScreen() {
             const { quote, request } = await createMintQuote(primaryMintUrl, sats);
             setInvoice({ quote, bolt11: request });
         } catch (error) {
-            Alert.alert('Error', 'Failed to generate invoice');
+            showError('Error', 'Failed to generate invoice');
         } finally {
             setIsLoading(false);
             setStatus('');

@@ -1,12 +1,13 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Alert, ActivityIndicator, Pressable, Platform } from 'react-native';
+import { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TextInput, ActivityIndicator, Pressable, Platform, ScrollView } from 'react-native';
+import { useAlert } from '@/hooks/useAlert';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import QRCode from 'react-native-qrcode-svg';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { colors, spacing, typography, borderRadius } from '@/theme';
-import { useWalletStore } from '@/store/wallet.store';
+import { useWalletStore, isTestnetMint, getMintDisplayName, normalizeMintUrl, type MintBalance } from '@/store/wallet.store';
 import { useConfigStore } from '@/store/config.store';
 import { createMeltQuote, meltTokens, splitTokens, encodeToken } from '@/services/cashu.service';
 import type { Proof } from '@/types/mint';
@@ -15,9 +16,20 @@ type WithdrawMode = 'lightning' | 'cashu';
 
 export default function WithdrawScreen() {
     const router = useRouter();
-    const { balance, proofs, removeProofs, addProofs } = useWalletStore();
+    const { alert, success, error: showError } = useAlert();
+    const { balance, proofs, removeProofs, addProofs, getBalancesByMint, getProofsForMint } = useWalletStore();
     const { mints } = useConfigStore();
     const primaryMintUrl = mints.primaryMintUrl;
+
+    // Get available mint balances
+    const mintBalances = useMemo(() => getBalancesByMint(), [proofs]);
+    const [selectedMintUrl, setSelectedMintUrl] = useState<string | null>(null);
+
+    // Get the effective mint and balance for operations
+    const effectiveMint = selectedMintUrl || (mintBalances.length > 0 ? mintBalances[0].mintUrl : primaryMintUrl);
+    const selectedMintBalance = mintBalances.find(m => m.mintUrl === effectiveMint);
+    const availableBalance = selectedMintBalance?.balance || 0;
+    const selectedProofs = effectiveMint ? getProofsForMint(effectiveMint) : proofs;
 
     const [mode, setMode] = useState<WithdrawMode>('lightning');
     const [invoice, setInvoice] = useState('');
@@ -51,11 +63,15 @@ export default function WithdrawScreen() {
 
     const handleWithdraw = async () => {
         if (!invoice) {
-            Alert.alert('Error', 'Please enter a Lightning invoice');
+            showError('Error', 'Please enter a Lightning invoice');
             return;
         }
-        if (!primaryMintUrl) {
-            Alert.alert('Error', 'No primary mint configured');
+        if (!effectiveMint) {
+            showError('Error', 'No mint selected');
+            return;
+        }
+        if (availableBalance === 0) {
+            showError('Error', 'No balance available from selected mint');
             return;
         }
 
@@ -63,39 +79,37 @@ export default function WithdrawScreen() {
             setIsLoading(true);
             setStatus('Getting quote...');
 
-            // 1. Get Melt Quote
-            const quote = await createMeltQuote(primaryMintUrl, invoice);
+            // 1. Get Melt Quote from the selected mint
+            const quote = await createMeltQuote(effectiveMint, invoice);
 
-            if (quote.amount + quote.fee > balance) {
-                Alert.alert('Error', `Insufficient balance. Need ${quote.amount + quote.fee} sats (${quote.amount} + ${quote.fee} fee).`);
+            if (quote.amount + quote.fee > availableBalance) {
+                showError('Error', `Insufficient balance. Need ${quote.amount + quote.fee} sats (${quote.amount} + ${quote.fee} fee). Available: ${availableBalance} sats.`);
                 setIsLoading(false);
                 return;
             }
 
             setStatus(`Paying ${quote.amount} sats + ${quote.fee} fee...`);
 
-            // 2. Melt tokens (pay invoice)
-            // We send all proofs for simplicity. The mint will return change.
-            const result = await meltTokens(primaryMintUrl, quote.quote, proofs);
+            // 2. Melt tokens (pay invoice) using proofs from selected mint
+            const result = await meltTokens(effectiveMint, quote.quote, selectedProofs);
 
             if (result.paid) {
-                // Remove spent proofs (all of them since we sent all)
-                removeProofs(proofs);
+                // Remove spent proofs
+                removeProofs(selectedProofs);
 
-                // Add change proofs if any
+                // Add change proofs if any (tagged with the mint URL)
                 if (result.change && result.change.length > 0) {
-                    addProofs(result.change);
+                    addProofs(result.change, effectiveMint);
                 }
 
-                Alert.alert('Success', 'Payment successful!');
-                router.back();
+                success('Success', 'Payment successful!', () => router.back());
             } else {
-                Alert.alert('Error', 'Payment failed.');
+                showError('Error', 'Payment failed.');
             }
 
         } catch (error) {
             console.error(error);
-            Alert.alert('Error', 'Withdrawal failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            showError('Error', 'Withdrawal failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
         } finally {
             setIsLoading(false);
             setStatus('');
@@ -127,15 +141,15 @@ export default function WithdrawScreen() {
     const handleGenerateCashuToken = async () => {
         const amount = parseInt(cashuAmount);
         if (isNaN(amount) || amount <= 0) {
-            Alert.alert('Error', 'Please enter a valid amount');
+            showError('Error', 'Please enter a valid amount');
             return;
         }
-        if (amount > balance) {
-            Alert.alert('Error', `Insufficient balance. Available: ${balance} sats`);
+        if (amount > availableBalance) {
+            showError('Error', `Insufficient balance. Available: ${availableBalance} sats`);
             return;
         }
-        if (!primaryMintUrl) {
-            Alert.alert('Error', 'No primary mint configured');
+        if (!effectiveMint) {
+            showError('Error', 'No mint selected');
             return;
         }
 
@@ -143,10 +157,10 @@ export default function WithdrawScreen() {
             setIsLoading(true);
             setStatus('Generating Cashu token...');
 
-            // Select proofs for the amount
-            const selection = selectProofsForAmount(proofs, amount);
+            // Select proofs for the amount from the selected mint's proofs
+            const selection = selectProofsForAmount(selectedProofs, amount);
             if (!selection) {
-                Alert.alert('Error', 'Could not select proofs for this amount');
+                showError('Error', 'Could not select proofs for this amount');
                 setIsLoading(false);
                 return;
             }
@@ -159,10 +173,10 @@ export default function WithdrawScreen() {
                 tokenProofs = selection.selected;
                 changeProofs = [];
             } else {
-                // Need to split
+                // Need to split using the correct mint
                 setStatus('Splitting tokens...');
                 const result = await splitTokens(
-                    primaryMintUrl,
+                    effectiveMint,
                     selection.selected,
                     selection.total - amount // keepAmount = change
                 );
@@ -170,13 +184,14 @@ export default function WithdrawScreen() {
                 changeProofs = result.keep;
             }
 
-            // Encode the token
-            const token = encodeToken(primaryMintUrl, tokenProofs, `Withdraw ${amount} sats`);
+            // Encode the token with the CORRECT mint URL (normalized - no trailing slash)
+            const normalizedMint = normalizeMintUrl(effectiveMint);
+            const token = encodeToken(normalizedMint, tokenProofs, `Withdraw ${amount} sats`);
 
-            // Update wallet - remove used proofs, add change
+            // Update wallet - remove used proofs, add change with correct mint tag
             removeProofs(selection.selected);
             if (changeProofs.length > 0) {
-                addProofs(changeProofs, primaryMintUrl);
+                addProofs(changeProofs, effectiveMint);
             }
 
             // Display the QR code
@@ -185,7 +200,7 @@ export default function WithdrawScreen() {
 
         } catch (error) {
             console.error(error);
-            Alert.alert('Error', 'Failed to generate token: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            showError('Error', 'Failed to generate token: ' + (error instanceof Error ? error.message : 'Unknown error'));
         } finally {
             setIsLoading(false);
             setStatus('');
@@ -311,6 +326,44 @@ export default function WithdrawScreen() {
                 </Pressable>
             </View>
 
+            {/* Mint Selector - show when multiple mints have balance */}
+            {mintBalances.length > 1 && (
+                <View style={styles.mintSelector}>
+                    <Text style={styles.mintSelectorLabel}>Withdraw from:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mintList}>
+                        {mintBalances.map((mint) => (
+                            <Pressable
+                                key={mint.mintUrl}
+                                style={[
+                                    styles.mintOption,
+                                    effectiveMint === mint.mintUrl && styles.mintOptionSelected,
+                                    mint.isTestnet && styles.mintOptionTestnet,
+                                ]}
+                                onPress={() => setSelectedMintUrl(mint.mintUrl)}
+                            >
+                                <Text style={[
+                                    styles.mintOptionName,
+                                    effectiveMint === mint.mintUrl && styles.mintOptionNameSelected,
+                                ]}>
+                                    {mint.displayName}
+                                </Text>
+                                <Text style={[
+                                    styles.mintOptionBalance,
+                                    effectiveMint === mint.mintUrl && styles.mintOptionBalanceSelected,
+                                ]}>
+                                    {mint.balance.toLocaleString()} sats
+                                </Text>
+                                {mint.isTestnet && (
+                                    <View style={styles.testnetBadge}>
+                                        <Text style={styles.testnetBadgeText}>TEST</Text>
+                                    </View>
+                                )}
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+                </View>
+            )}
+
             <View style={styles.content}>
                 {mode === 'lightning' ? (
                     <>
@@ -332,7 +385,8 @@ export default function WithdrawScreen() {
                         />
 
                         <Text style={styles.balanceInfo}>
-                            Available Balance: {balance.toLocaleString()} sats
+                            Available Balance: {availableBalance.toLocaleString()} sats
+                            {selectedMintBalance?.isTestnet && ' (Testnet)'}
                         </Text>
 
                         {isLoading ? (
@@ -345,7 +399,7 @@ export default function WithdrawScreen() {
                                 title="Pay Invoice"
                                 onPress={handleWithdraw}
                                 fullWidth
-                                disabled={!invoice || balance === 0}
+                                disabled={!invoice || availableBalance === 0}
                             />
                         )}
                     </>
@@ -362,7 +416,8 @@ export default function WithdrawScreen() {
                         />
 
                         <Text style={styles.balanceInfo}>
-                            Available Balance: {balance.toLocaleString()} sats
+                            Available Balance: {availableBalance.toLocaleString()} sats
+                            {selectedMintBalance?.isTestnet && ' (Testnet)'}
                         </Text>
 
                         <Text style={styles.cashuHint}>
@@ -379,13 +434,13 @@ export default function WithdrawScreen() {
                                 title="Generate Token QR"
                                 onPress={handleGenerateCashuToken}
                                 fullWidth
-                                disabled={!cashuAmount || balance === 0}
+                                disabled={!cashuAmount || availableBalance === 0}
                             />
                         )}
                     </>
                 )}
 
-                {balance === 0 && (
+                {availableBalance === 0 && (
                     <Text style={styles.noBalanceText}>
                         No balance available to withdraw
                     </Text>
@@ -437,6 +492,65 @@ const styles = StyleSheet.create({
     modeOptionTextActive: {
         color: colors.text.inverse,
         fontWeight: '600',
+    },
+
+    // Mint selector
+    mintSelector: {
+        marginBottom: spacing.md,
+    },
+    mintSelectorLabel: {
+        ...typography.label,
+        marginBottom: spacing.sm,
+    },
+    mintList: {
+        flexDirection: 'row',
+    },
+    mintOption: {
+        backgroundColor: colors.background.secondary,
+        borderRadius: borderRadius.md,
+        padding: spacing.sm,
+        marginRight: spacing.sm,
+        minWidth: 120,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    mintOptionSelected: {
+        borderColor: colors.accent.primary,
+        backgroundColor: colors.background.tertiary,
+    },
+    mintOptionTestnet: {
+        position: 'relative',
+    },
+    mintOptionName: {
+        ...typography.bodySmall,
+        color: colors.text.secondary,
+        marginBottom: 2,
+    },
+    mintOptionNameSelected: {
+        color: colors.text.primary,
+        fontWeight: '600',
+    },
+    mintOptionBalance: {
+        ...typography.body,
+        color: colors.text.primary,
+        fontWeight: '600',
+    },
+    mintOptionBalanceSelected: {
+        color: colors.accent.primary,
+    },
+    testnetBadge: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        backgroundColor: colors.status.warning,
+        paddingHorizontal: 4,
+        paddingVertical: 1,
+        borderRadius: 4,
+    },
+    testnetBadgeText: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: colors.text.inverse,
     },
 
     // Form elements

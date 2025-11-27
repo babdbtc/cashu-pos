@@ -24,6 +24,7 @@ import type {
   MintKeyset,
   TokenState,
 } from '@/types/mint';
+import { normalizeMintUrl } from '@/store/wallet.store';
 
 // Cache for mint connections
 const mintCache = new Map<string, Mint>();
@@ -33,12 +34,13 @@ const walletCache = new Map<string, Wallet>();
  * Get or create a Mint instance for a given URL
  */
 export async function getMint(mintUrl: string): Promise<Mint> {
-  if (mintCache.has(mintUrl)) {
-    return mintCache.get(mintUrl)!;
+  const normalizedUrl = normalizeMintUrl(mintUrl);
+  if (mintCache.has(normalizedUrl)) {
+    return mintCache.get(normalizedUrl)!;
   }
 
-  const mint = new Mint(mintUrl);
-  mintCache.set(mintUrl, mint);
+  const mint = new Mint(normalizedUrl);
+  mintCache.set(normalizedUrl, mint);
   return mint;
 }
 
@@ -46,14 +48,15 @@ export async function getMint(mintUrl: string): Promise<Mint> {
  * Get or create a Wallet instance for a given mint
  */
 export async function getWallet(mintUrl: string): Promise<Wallet> {
-  if (walletCache.has(mintUrl)) {
-    return walletCache.get(mintUrl)!;
+  const normalizedUrl = normalizeMintUrl(mintUrl);
+  if (walletCache.has(normalizedUrl)) {
+    return walletCache.get(normalizedUrl)!;
   }
 
-  const mint = await getMint(mintUrl);
+  const mint = await getMint(normalizedUrl);
   const wallet = new Wallet(mint, { unit: 'sat' });
   await wallet.loadMint();
-  walletCache.set(mintUrl, wallet);
+  walletCache.set(normalizedUrl, wallet);
   return wallet;
 }
 
@@ -243,7 +246,7 @@ export function encodeToken(
   memo?: string
 ): string {
   return getEncodedTokenV4({
-    mint: mintUrl,
+    mint: normalizeMintUrl(mintUrl),
     proofs,
     memo,
   });

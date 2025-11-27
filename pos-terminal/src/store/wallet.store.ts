@@ -16,6 +16,20 @@ const secureStorage = {
     },
 };
 
+// Normalize mint URL (remove trailing slash, ensure https)
+export function normalizeMintUrl(mintUrl: string): string {
+    let url = mintUrl.trim();
+    // Add https if no protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+    }
+    // Remove trailing slash
+    while (url.endsWith('/')) {
+        url = url.slice(0, -1);
+    }
+    return url;
+}
+
 // Helper to detect testnet mints
 export function isTestnetMint(mintUrl: string): boolean {
     const testnetIndicators = [
@@ -73,9 +87,10 @@ export const useWalletStore = create<WalletState>()(
 
             addProofs: (newProofs, mintUrl) => {
                 set((state) => {
-                    // Tag proofs with mint URL if provided
-                    const taggedProofs = mintUrl
-                        ? newProofs.map(p => ({ ...p, mintUrl }))
+                    // Tag proofs with mint URL if provided (normalized)
+                    const normalizedMint = mintUrl ? normalizeMintUrl(mintUrl) : undefined;
+                    const taggedProofs = normalizedMint
+                        ? newProofs.map(p => ({ ...p, mintUrl: normalizedMint }))
                         : newProofs;
 
                     const updatedProofs = [...state.proofs, ...taggedProofs];
@@ -110,7 +125,8 @@ export const useWalletStore = create<WalletState>()(
                 const mintMap = new Map<string, { balance: number; count: number }>();
 
                 for (const proof of proofs) {
-                    const mintUrl = proof.mintUrl || 'unknown';
+                    // Normalize mint URL to ensure consistent grouping
+                    const mintUrl = proof.mintUrl ? normalizeMintUrl(proof.mintUrl) : 'unknown';
                     const existing = mintMap.get(mintUrl) || { balance: 0, count: 0 };
                     mintMap.set(mintUrl, {
                         balance: existing.balance + proof.amount,
@@ -140,7 +156,8 @@ export const useWalletStore = create<WalletState>()(
 
             getProofsForMint: (mintUrl: string) => {
                 const { proofs } = get();
-                return proofs.filter(p => p.mintUrl === mintUrl);
+                const normalizedQuery = normalizeMintUrl(mintUrl);
+                return proofs.filter(p => p.mintUrl && normalizeMintUrl(p.mintUrl) === normalizedQuery);
             },
 
             getTestnetBalance: () => {

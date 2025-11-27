@@ -13,13 +13,14 @@ import {
   ScrollView,
   Switch,
   TextInput,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAlert } from '../../src/hooks/useAlert';
 import { useConfigStore } from '../../src/store/config.store';
 
 export default function SecuritySettingsScreen() {
+  const { success, error: showError, confirm } = useAlert();
   const security = useConfigStore((state) => state.security);
   const setRequirePin = useConfigStore((state) => state.setRequirePin);
   const setRequirePinForRefunds = useConfigStore((state) => state.setRequirePinForRefunds);
@@ -35,11 +36,11 @@ export default function SecuritySettingsScreen() {
 
   const handleSetPin = useCallback(() => {
     if (pinInput.length < 4) {
-      Alert.alert('Error', 'PIN must be at least 4 digits');
+      showError('Error', 'PIN must be at least 4 digits');
       return;
     }
     if (pinInput !== confirmPinInput) {
-      Alert.alert('Error', 'PINs do not match');
+      showError('Error', 'PINs do not match');
       return;
     }
 
@@ -48,23 +49,16 @@ export default function SecuritySettingsScreen() {
     setShowPinSetup(false);
     setPinInput('');
     setConfirmPinInput('');
-    Alert.alert('Success', 'PIN has been set successfully');
-  }, [pinInput, confirmPinInput, setRequirePin]);
+    success('Success', 'PIN has been set successfully');
+  }, [pinInput, confirmPinInput, setRequirePin, showError, success]);
 
   const handleRemovePin = useCallback(() => {
-    Alert.alert(
+    confirm(
       'Remove PIN',
       'Are you sure you want to remove the PIN requirement?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => setRequirePin(false),
-        },
-      ]
+      () => setRequirePin(false)
     );
-  }, [setRequirePin]);
+  }, [setRequirePin, confirm]);
 
   const handleMaxAmountChange = useCallback(
     (text: string) => {

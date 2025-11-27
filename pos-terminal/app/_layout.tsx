@@ -14,14 +14,16 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 import { colors } from '@/theme';
 import { ToastProvider } from '@/hooks/useToast';
+import { AlertProvider } from '@/hooks/useAlert';
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
         <ToastProvider>
-          <StatusBar style="light" />
-          <Stack
+          <AlertProvider>
+            <StatusBar style="light" />
+            <Stack
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colors.background.primary },
@@ -43,6 +45,7 @@ export default function RootLayout() {
               }}
             />
           </Stack>
+          </AlertProvider>
         </ToastProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
