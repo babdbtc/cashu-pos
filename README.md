@@ -76,7 +76,7 @@ cashu-pos/
 ```bash
 # Clone the repository
 git clone https://github.com/your-repo/cashupaysystem.git
-cd cashupaysystem
+cd cashu-pos
 
 # Install dependencies
 cd pos-terminal
