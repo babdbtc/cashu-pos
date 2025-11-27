@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { NumPad } from '@/components/payment/NumPad';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { usePaymentStore } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
@@ -19,6 +20,7 @@ import {
   startRateRefresh,
   fiatToSatsSync,
 } from '@/services/exchange-rate.service';
+import { getCurrencySymbol } from '@/constants/currencies';
 import type { ExchangeRate } from '@/types/payment';
 
 export default function AmountScreen() {
@@ -111,18 +113,23 @@ export default function AmountScreen() {
 
       {/* Amount Display */}
       <View style={styles.amountContainer}>
-        <View style={styles.amountDisplay}>
-          <Text style={styles.currencySymbol}>$</Text>
-          <Text style={styles.amount}>{displayAmount}</Text>
-        </View>
-
         {rateLoading ? (
-          <ActivityIndicator color={colors.accent.primary} style={{ marginTop: spacing.md }} />
-        ) : satsAmount > 0 ? (
-          <Text style={styles.satsAmount}>
-            {satsAmount.toLocaleString()} sats
-          </Text>
-        ) : null}
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.amountDisplay}>
+              <Text style={styles.currencySymbol}>{getCurrencySymbol(currency.displayCurrency)}</Text>
+              <Text style={styles.amount}>{displayAmount}</Text>
+            </View>
+            <ActivityIndicator color={colors.accent.primary} style={{ marginTop: spacing.md }} />
+          </View>
+        ) : (
+          <PriceDisplay
+            fiatAmount={amountCents / 100}
+            satsAmount={satsAmount}
+            currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+            large
+            showSats={satsAmount > 0}
+          />
+        )}
 
         {rate && !rateLoading && (
           <Text style={styles.rateInfo}>

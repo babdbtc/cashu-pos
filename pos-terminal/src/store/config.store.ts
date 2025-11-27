@@ -73,6 +73,9 @@ interface ConfigState {
   // Currency-specific actions
   setDisplayCurrency: (currency: string) => void;
   setShowSatsBelow: (show: boolean) => void;
+  setPriceDisplayMode: (mode: 'fiat_sats' | 'sats_fiat' | 'sats_only') => void;
+  setSatsDisplayFormat: (format: 'sats' | 'btc') => void;
+  setExchangeRate: (rate: number) => void;
 
   // Offline-specific actions
   setOfflineEnabled: (enabled: boolean) => void;
@@ -132,6 +135,7 @@ export const useConfigStore = create<ConfigState>()(
         fiatDecimals: 2,
         showSatsBelow: true,
         satsDisplayFormat: 'sats',
+        priceDisplayMode: 'fiat_sats',
         exchangeRateSource: 'coingecko',
         rateRefreshInterval: 60,
         offlineRateBehavior: 'use_cached',
@@ -295,6 +299,7 @@ export const useConfigStore = create<ConfigState>()(
             fiatDecimals: 2,
             showSatsBelow: true,
             satsDisplayFormat: 'sats',
+            priceDisplayMode: 'fiat_sats',
             exchangeRateSource: 'coingecko',
             rateRefreshInterval: 60,
             offlineRateBehavior: 'use_cached',
@@ -352,6 +357,24 @@ export const useConfigStore = create<ConfigState>()(
       setShowSatsBelow: (show) => {
         set((state) => ({
           currency: { ...state.currency, showSatsBelow: show },
+        }));
+      },
+
+      setPriceDisplayMode: (mode) => {
+        set((state) => ({
+          currency: { ...state.currency, priceDisplayMode: mode },
+        }));
+      },
+
+      setSatsDisplayFormat: (format) => {
+        set((state) => ({
+          currency: { ...state.currency, satsDisplayFormat: format },
+        }));
+      },
+
+      setExchangeRate: (rate) => {
+        set((state) => ({
+          currency: { ...state.currency, exchangeRate: rate },
         }));
       },
 

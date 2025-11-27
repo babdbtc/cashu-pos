@@ -23,6 +23,8 @@ import { usePaymentStore } from '../../src/store/payment.store';
 import { useConfigStore } from '../../src/store/config.store';
 import { formatFiat, formatSats } from '../../src/services/exchange-rate.service';
 import { refundService, type Refund } from '../../src/services/refund.service';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { getCurrencySymbol } from '@/constants/currencies';
 import type { Payment } from '../../src/types/payment';
 
 type RefundType = 'full' | 'partial';
@@ -206,15 +208,14 @@ export default function RefundTransactionScreen() {
           <View style={styles.refundDetails}>
             <View style={styles.refundDetailRow}>
               <Text style={styles.refundDetailLabel}>Amount</Text>
-              <Text style={styles.refundDetailValue}>
-                {formatFiat(completedRefund.fiatAmount, completedRefund.fiatCurrency)}
-              </Text>
-            </View>
-            <View style={styles.refundDetailRow}>
-              <Text style={styles.refundDetailLabel}>Satoshis</Text>
-              <Text style={styles.refundDetailValueSats}>
-                {formatSats(completedRefund.refundedAmount)}
-              </Text>
+              <PriceDisplay
+                fiatAmount={completedRefund.fiatAmount}
+                satsAmount={completedRefund.refundedAmount}
+                currencySymbol={getCurrencySymbol(completedRefund.fiatCurrency)}
+                fiatStyle={styles.refundDetailValue}
+                satsStyle={styles.refundDetailValueSats}
+                showSats={true}
+              />
             </View>
             {completedRefund.claimCode && (
               <View style={styles.refundDetailRow}>
@@ -311,12 +312,14 @@ export default function RefundTransactionScreen() {
             <View style={styles.transactionRow}>
               <Text style={styles.transactionLabel}>Amount</Text>
               <View style={styles.transactionAmounts}>
-                <Text style={styles.transactionFiat}>
-                  {formatFiat(transaction.fiatAmount, transaction.fiatCurrency)}
-                </Text>
-                <Text style={styles.transactionSats}>
-                  {formatSats(transaction.satsAmount)}
-                </Text>
+                <PriceDisplay
+                  fiatAmount={transaction.fiatAmount}
+                  satsAmount={transaction.satsAmount}
+                  currencySymbol={getCurrencySymbol(transaction.fiatCurrency)}
+                  fiatStyle={styles.transactionFiat}
+                  satsStyle={styles.transactionSats}
+                  showSats={true}
+                />
               </View>
             </View>
 
@@ -405,7 +408,7 @@ export default function RefundTransactionScreen() {
               <Text style={styles.inputLabel}>Refund Amount</Text>
               <View style={styles.amountInputWrapper}>
                 <Text style={styles.amountCurrency}>
-                  {transaction.fiatCurrency === 'USD' ? '$' : transaction.fiatCurrency}
+                  {getCurrencySymbol(transaction.fiatCurrency)}
                 </Text>
                 <TextInput
                   style={styles.amountInput}
@@ -478,13 +481,14 @@ export default function RefundTransactionScreen() {
           <View style={styles.summaryCard}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Refund Amount</Text>
-              <Text style={styles.summaryValue}>
-                {formatFiat(refundFiatAmount, transaction.fiatCurrency)}
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Satoshis</Text>
-              <Text style={styles.summaryValueSats}>{formatSats(refundAmount)}</Text>
+              <PriceDisplay
+                fiatAmount={refundFiatAmount}
+                satsAmount={refundAmount}
+                currencySymbol={getCurrencySymbol(transaction.fiatCurrency)}
+                fiatStyle={styles.summaryValue}
+                satsStyle={styles.summaryValueSats}
+                showSats={true}
+              />
             </View>
             {requiresApproval && (
               <View style={styles.summaryRow}>
@@ -574,6 +578,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4ade80',
     marginTop: 2,
+    fontWeight: '500',
   },
   transactionValue: {
     fontSize: 14,
@@ -755,6 +760,7 @@ const styles = StyleSheet.create({
   summaryValueSats: {
     fontSize: 16,
     color: '#4ade80',
+    fontWeight: '500',
   },
   summaryWarning: {
     fontSize: 14,

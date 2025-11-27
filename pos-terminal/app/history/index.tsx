@@ -11,7 +11,8 @@ import { Link, useRouter } from 'expo-router';
 
 import { usePaymentStore } from '../../src/store/payment.store';
 import { useConfigStore } from '../../src/store/config.store';
-import { formatFiat, formatSats } from '../../src/services/exchange-rate.service';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { getCurrencySymbol } from '@/constants/currencies';
 import type { Payment } from '../../src/types/payment';
 
 export default function HistoryScreen() {
@@ -37,12 +38,14 @@ export default function HistoryScreen() {
           <View style={styles.paymentLeft}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <View style={styles.paymentInfo}>
-              <Text style={styles.paymentAmount}>
-                {formatFiat(item.fiatAmount, item.fiatCurrency)}
-              </Text>
-              <Text style={styles.paymentSats}>
-                {formatSats(item.satsAmount)}
-              </Text>
+              <PriceDisplay
+                fiatAmount={item.fiatAmount}
+                satsAmount={item.satsAmount}
+                currencySymbol={getCurrencySymbol(item.fiatCurrency)}
+                fiatStyle={styles.paymentAmount}
+                satsStyle={styles.paymentSats}
+                showSats={true}
+              />
             </View>
           </View>
 
@@ -163,6 +166,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
     marginTop: 2,
+    fontWeight: '500',
   },
   paymentRight: {
     alignItems: 'flex-end',

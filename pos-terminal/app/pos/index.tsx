@@ -19,9 +19,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
 
-import { useCatalogStore, useCartStore, useConfigStore } from '@/store';
+import { useCatalogStore, useCartStore } from '@/store';
 import type { Product, Category } from '@/types/catalog';
 import { sampleCategories, sampleProducts, sampleModifierGroups } from '@/data/sample-catalog';
+
+import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { getCurrencySymbol } from '@/constants/currencies';
+import { useConfigStore } from '@/store/config.store';
+import { fiatToSatsSync, getExchangeRate } from '@/services/exchange-rate.service';
 
 // Format price from cents to display string
 function formatPrice(cents: number): string {
@@ -64,6 +69,13 @@ function ProductCard({
 }) {
   const isOutOfStock = product.inventory?.status === 'out_of_stock';
   const isLowStock = product.inventory?.status === 'low_stock';
+  const { currency } = useConfigStore();
+
+  const satsAmount = currency.exchangeRate
+    ? fiatToSatsSync(product.price / 100, currency.displayCurrency) ?? 0
+    : 0;
+
+  const isSatsMain = currency.priceDisplayMode === 'sats_fiat' || currency.priceDisplayMode === 'sats_only';
 
   return (
     <Pressable
@@ -89,7 +101,15 @@ function ProductCard({
         <Text style={styles.productName} numberOfLines={2}>
           {product.name}
         </Text>
-        <Text style={styles.productPrice}>{formatPrice(product.price)}</Text>
+        <PriceDisplay
+          fiatAmount={product.price / 100}
+          satsAmount={satsAmount}
+          currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+          fiatStyle={isSatsMain ? styles.productPriceSats : styles.productPrice}
+          satsStyle={isSatsMain ? styles.productPrice : styles.productPriceSats}
+          style={styles.productPriceContainer}
+          showSats={true}
+        />
       </View>
 
       {isOutOfStock && (
@@ -118,10 +138,13 @@ function CartItemRow({
   onDecrement: () => void;
   onRemove: () => void;
 }) {
+  const { currency } = useConfigStore();
+  const isSatsMain = currency.priceDisplayMode === 'sats_fiat' || currency.priceDisplayMode === 'sats_only';
+
   return (
     <View style={styles.cartItem}>
-      <View style={styles.cartItemInfo}>
-        <Text style={styles.cartItemName} numberOfLines={1}>
+      <View style={styles.cartItemHeader}>
+        <Text style={styles.cartItemName}>
           {item.product.name}
           {item.variant && ` (${item.variant.name})`}
         </Text>
@@ -130,24 +153,35 @@ function CartItemRow({
             {item.selectedModifiers.map((m) => m.modifier.name).join(', ')}
           </Text>
         )}
-        <Text style={styles.cartItemPrice}>{formatPrice(item.unitPrice)}</Text>
       </View>
 
-      <View style={styles.cartItemActions}>
-        <Pressable style={styles.qtyButton} onPress={onDecrement}>
-          <Text style={styles.qtyButtonText}>-</Text>
-        </Pressable>
-        <Text style={styles.qtyText}>{item.quantity}</Text>
-        <Pressable style={styles.qtyButton} onPress={onIncrement}>
-          <Text style={styles.qtyButtonText}>+</Text>
-        </Pressable>
+      <View style={styles.cartItemFooter}>
+        <View style={styles.cartItemActions}>
+          <Pressable style={styles.qtyButton} onPress={onDecrement}>
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+          <Text style={styles.qtyText}>{item.quantity}</Text>
+          <Pressable style={styles.qtyButton} onPress={onIncrement}>
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.cartItemRight}>
+          <PriceDisplay
+            fiatAmount={item.subtotal / 100}
+            satsAmount={currency.exchangeRate ? (fiatToSatsSync(item.subtotal / 100, currency.displayCurrency) ?? 0) : 0}
+            currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+            fiatStyle={isSatsMain ? styles.cartItemTotalSatsText : styles.cartItemTotalText}
+            satsStyle={isSatsMain ? styles.cartItemTotalText : styles.cartItemTotalSatsText}
+            style={styles.cartItemTotalContainer}
+            showSats={true}
+          />
+
+          <Pressable style={styles.removeButton} onPress={onRemove}>
+            <Text style={styles.removeButtonText}>x</Text>
+          </Pressable>
+        </View>
       </View>
-
-      <Text style={styles.cartItemTotal}>{formatPrice(item.subtotal)}</Text>
-
-      <Pressable style={styles.removeButton} onPress={onRemove}>
-        <Text style={styles.removeButtonText}>x</Text>
-      </Pressable>
     </View>
   );
 }
@@ -174,6 +208,14 @@ export default function POSScreen() {
 
   // Config
   const merchantName = useConfigStore((s) => s.merchantName);
+  const currency = useConfigStore((s) => s.currency);
+
+  // Fetch exchange rate on mount
+  useEffect(() => {
+    getExchangeRate(currency.displayCurrency).catch(console.error);
+  }, [currency.displayCurrency]);
+
+  const isSatsMain = currency.priceDisplayMode === 'sats_fiat' || currency.priceDisplayMode === 'sats_only';
 
   // Load sample data if store is empty
   useEffect(() => {
@@ -236,6 +278,8 @@ export default function POSScreen() {
   const cartTotals = cart.totals;
 
   // Number of columns based on screen width
+  // Tablet vertical (portrait) usually has width < height, but isTablet is based on screen size
+  // We want 3 columns on tablet when cart is shown, even in vertical mode if space permits
   const numColumns = isTablet ? (showCart ? 3 : 4) : 2;
 
   return (
@@ -307,7 +351,14 @@ export default function POSScreen() {
           <ScrollView style={styles.productsScrollView}>
             <View style={styles.productsRow}>
               {filteredProducts.map((item) => {
-                const cardWidth = isTablet ? (showCart ? (width - 320) / 3 - 12 : width / 4 - 12) : width / 2 - 12;
+                // Calculate width dynamically based on available space
+                // Tablet with cart: (Total Width - Cart Width - Padding) / 3 columns
+                // We need to ensure we subtract enough for the cart (320px) and margins
+                const cardWidth = isTablet
+                  ? (showCart
+                    ? (width - 340) / 3 - 12 // Increased subtraction to account for cart + padding
+                    : width / 4 - 12)
+                  : width / 2 - 12;
                 return (
                   <View key={item.id} style={[styles.productCardWrapper, { width: cardWidth }]}>
                     <ProductCard product={item} onPress={() => handleProductPress(item)} />
@@ -364,25 +415,51 @@ export default function POSScreen() {
               <View style={styles.cartTotals}>
                 <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>Subtotal</Text>
-                  <Text style={styles.totalValue}>{formatPrice(cartTotals.subtotal)}</Text>
+                  <PriceDisplay
+                    fiatAmount={cartTotals.subtotal / 100}
+                    satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.subtotal / 100, currency.displayCurrency) ?? 0) : 0}
+                    currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                    fiatStyle={isSatsMain ? styles.totalValueSats : styles.totalValue}
+                    satsStyle={isSatsMain ? styles.totalValue : styles.totalValueSats}
+                    showSats={true}
+                  />
                 </View>
                 {cartTotals.discountTotal > 0 && (
                   <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Discount</Text>
-                    <Text style={[styles.totalValue, styles.discountValue]}>
-                      -{formatPrice(cartTotals.discountTotal)}
-                    </Text>
+                    <PriceDisplay
+                      fiatAmount={cartTotals.discountTotal / 100}
+                      satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.discountTotal / 100, currency.displayCurrency) ?? 0) : 0}
+                      currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                      fiatStyle={isSatsMain ? [styles.totalValueSats, styles.discountValue] : [styles.totalValue, styles.discountValue]}
+                      satsStyle={isSatsMain ? [styles.totalValue, styles.discountValue] : [styles.totalValueSats, styles.discountValue]}
+                      showSats={true}
+                    />
                   </View>
                 )}
                 {cartTotals.taxTotal > 0 && (
                   <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Tax</Text>
-                    <Text style={styles.totalValue}>{formatPrice(cartTotals.taxTotal)}</Text>
+                    <PriceDisplay
+                      fiatAmount={cartTotals.taxTotal / 100}
+                      satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.taxTotal / 100, currency.displayCurrency) ?? 0) : 0}
+                      currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                      fiatStyle={isSatsMain ? styles.totalValueSats : styles.totalValue}
+                      satsStyle={isSatsMain ? styles.totalValue : styles.totalValueSats}
+                      showSats={true}
+                    />
                   </View>
                 )}
                 <View style={[styles.totalRow, styles.grandTotalRow]}>
                   <Text style={styles.grandTotalLabel}>Total</Text>
-                  <Text style={styles.grandTotalValue}>{formatPrice(cartTotals.total)}</Text>
+                  <PriceDisplay
+                    fiatAmount={cartTotals.total / 100}
+                    satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.total / 100, currency.displayCurrency) ?? 0) : 0}
+                    currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                    fiatStyle={isSatsMain ? styles.grandTotalSats : styles.grandTotalValue}
+                    satsStyle={isSatsMain ? styles.grandTotalValue : styles.grandTotalSats}
+                    showSats={true}
+                  />
                 </View>
               </View>
             )}
@@ -393,9 +470,19 @@ export default function POSScreen() {
               onPress={handleCheckout}
               disabled={cart.items.length === 0}
             >
-              <Text style={styles.checkoutButtonText}>
-                Charge {formatPrice(cartTotals.total)}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.checkoutButtonText}>
+                  Charge
+                </Text>
+                <PriceDisplay
+                  fiatAmount={cartTotals.total / 100}
+                  satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.total / 100, currency.displayCurrency) ?? 0) : 0}
+                  currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                  fiatStyle={isSatsMain ? styles.checkoutButtonSats : styles.checkoutButtonText}
+                  satsStyle={isSatsMain ? styles.checkoutButtonText : styles.checkoutButtonSats}
+                  showSats={true}
+                />
+              </View>
             </Pressable>
 
             {!isTablet && (
@@ -545,7 +632,7 @@ const styles = StyleSheet.create({
   },
   productCardWrapper: {
     margin: 6,
-    height: 180,
+    height: 200,
   },
   productCard: {
     flex: 1,
@@ -569,17 +656,31 @@ const styles = StyleSheet.create({
   },
   productInfo: {
     padding: 12,
+    paddingBottom: 12,
+    flex: 1,
+    justifyContent: 'space-between',
   },
   productName: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  productPriceContainer: {
+    alignItems: 'flex-end',
+    flexDirection: 'column-reverse',
+    marginBottom: 6,
   },
   productPrice: {
     color: '#4ade80',
     fontSize: 16,
     fontWeight: '700',
+  },
+  productPriceSats: {
+    color: '#4ade80',
+    fontSize: 14,
+    fontWeight: '500',
+    opacity: 0.8,
   },
   stockBadge: {
     position: 'absolute',
@@ -657,11 +758,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   cartItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#2a2a3e',
+  },
+  cartItemHeader: {
+    marginBottom: 8,
+  },
+  cartItemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cartItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   cartItemInfo: {
     flex: 1,
@@ -681,10 +793,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  cartItemPriceSats: {
+    color: '#888',
+    fontSize: 10,
+    marginTop: 2,
+    opacity: 0.8,
+  },
   cartItemActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 8,
   },
   qtyButton: {
     width: 28,
@@ -707,12 +824,20 @@ const styles = StyleSheet.create({
     minWidth: 20,
     textAlign: 'center',
   },
-  cartItemTotal: {
+  cartItemTotalContainer: {
+    minWidth: 60,
+    alignItems: 'flex-end',
+  },
+  cartItemTotalText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-    minWidth: 60,
-    textAlign: 'right',
+  },
+  cartItemTotalSatsText: {
+    color: '#4ade80',
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.8,
   },
   removeButton: {
     width: 24,
@@ -745,6 +870,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
+  totalValueSats: {
+    color: '#4ade80',
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.8,
+  },
   discountValue: {
     color: '#4ade80',
   },
@@ -764,6 +895,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
+  grandTotalSats: {
+    color: '#4ade80',
+    fontSize: 16,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
   checkoutButton: {
     backgroundColor: '#4ade80',
     margin: 16,
@@ -779,6 +916,12 @@ const styles = StyleSheet.create({
     color: '#0f0f1a',
     fontSize: 18,
     fontWeight: '700',
+  },
+  checkoutButtonSats: {
+    color: '#0f0f1a',
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.8,
   },
   closeCartButton: {
     padding: 16,

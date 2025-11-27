@@ -10,7 +10,9 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { colors, spacing, typography, borderRadius } from '@/theme';
+import { getCurrencySymbol } from '@/constants/currencies';
 import { usePaymentStore } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
 import { receiptService } from '@/services/receipt.service';
@@ -142,12 +144,12 @@ export default function ResultScreen() {
 
         {isSuccess ? (
           <>
-            <Text style={styles.amount}>
-              ${fiatAmount.toFixed(2)} {fiatCurrency}
-            </Text>
-            <Text style={styles.satsAmount}>
-              {satsAmount.toLocaleString()} sats
-            </Text>
+            <PriceDisplay
+              fiatAmount={fiatAmount}
+              satsAmount={satsAmount}
+              currencySymbol={getCurrencySymbol(fiatCurrency)}
+              style={{ marginBottom: spacing.xxl }}
+            />
 
             {transactionId && (
               <View style={styles.txInfo}>

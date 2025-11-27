@@ -12,7 +12,9 @@ import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { colors, spacing, typography, borderRadius } from '@/theme';
+import { getCurrencySymbol } from '@/constants/currencies';
 import { usePaymentStore, PaymentMethod } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
 import { useWalletStore } from '@/store/wallet.store';
@@ -34,7 +36,7 @@ export default function PaymentScreen() {
     setLightningPaid,
   } = usePaymentStore();
 
-  const { mints } = useConfigStore();
+  const { mints, currency } = useConfigStore();
   const { addProofs } = useWalletStore();
   const primaryMintUrl = mints.primaryMintUrl;
 
@@ -284,7 +286,9 @@ export default function PaymentScreen() {
 
         <View style={styles.scannerAmountBadge}>
           <Text style={styles.scannerAmountText}>
-            {satsAmount.toLocaleString()} sats
+            {currency.satsDisplayFormat === 'btc'
+              ? `₿${satsAmount.toLocaleString()}`
+              : `${satsAmount.toLocaleString()} sats`}
           </Text>
         </View>
 
@@ -321,12 +325,11 @@ export default function PaymentScreen() {
       {/* Amount Display */}
       <View style={styles.amountSection}>
         <Text style={styles.label}>Amount Due</Text>
-        <Text style={styles.fiatAmount}>
-          ${fiatAmount.toFixed(2)} {fiatCurrency}
-        </Text>
-        <Text style={styles.satsAmount}>
-          {satsAmount.toLocaleString()} sats
-        </Text>
+        <PriceDisplay
+          fiatAmount={fiatAmount}
+          satsAmount={satsAmount}
+          currencySymbol={getCurrencySymbol(fiatCurrency)}
+        />
       </View>
 
       {/* Payment Method Tabs */}

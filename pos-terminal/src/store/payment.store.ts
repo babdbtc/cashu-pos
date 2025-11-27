@@ -1,10 +1,12 @@
 /**
  * Payment Store
  *
- * Manages current payment state using Zustand.
+ * Manages current payment state using Zustand with persistence.
  */
 
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import type {
   Payment,
@@ -13,6 +15,9 @@ import type {
 } from '@/types/payment';
 
 export type PaymentMethod = 'cashu' | 'lightning';
+
+// Maximum number of recent payments to store
+const MAX_RECENT_PAYMENTS = 100;
 
 interface LightningInvoice {
   quote: string;
@@ -78,153 +83,180 @@ async function generatePaymentId(): Promise<string> {
   return `pay_${hex}`;
 }
 
-export const usePaymentStore = create<PaymentStore>((set, get) => ({
-  currentPayment: null,
-  recentPayments: [],
-  paymentMethod: 'cashu',
-  lightningInvoice: null,
+// Helper to deserialize dates from JSON storage
+function deserializePayment(payment: any): Payment {
+  return {
+    ...payment,
+    createdAt: new Date(payment.createdAt),
+    completedAt: payment.completedAt ? new Date(payment.completedAt) : undefined,
+  };
+}
 
-  setPaymentMethod: (method) => {
-    set({ paymentMethod: method });
-  },
+export const usePaymentStore = create<PaymentStore>()(
+  persist(
+    (set, get) => ({
+      currentPayment: null,
+      recentPayments: [],
+      paymentMethod: 'cashu',
+      lightningInvoice: null,
 
-  setLightningInvoice: (invoice) => {
-    set({ lightningInvoice: invoice });
-  },
+      setPaymentMethod: (method) => {
+        set({ paymentMethod: method });
+      },
 
-  setLightningPaid: () => {
-    set((store) => ({
-      lightningInvoice: store.lightningInvoice
-        ? { ...store.lightningInvoice, paid: true }
-        : null,
-    }));
-  },
+      setLightningInvoice: (invoice) => {
+        set({ lightningInvoice: invoice });
+      },
 
-  createPayment: (params) => {
-    // Generate ID synchronously using timestamp + random
-    const id = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      setLightningPaid: () => {
+        set((store) => ({
+          lightningInvoice: store.lightningInvoice
+            ? { ...store.lightningInvoice, paid: true }
+            : null,
+        }));
+      },
 
-    const payment: Payment = {
-      id,
-      state: 'amount_entered',
-      requestedAmount: params.satsAmount,
-      requestedCurrency: 'sat',
-      satsAmount: params.satsAmount,
-      fiatAmount: params.fiatAmount,
-      fiatCurrency: params.fiatCurrency,
-      exchangeRate: params.exchangeRate || 0,
-      memo: params.memo,
-      createdAt: new Date(),
-    };
+      createPayment: (params) => {
+        // Generate ID synchronously using timestamp + random
+        const id = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    set({ currentPayment: payment });
-    return payment;
-  },
+        const payment: Payment = {
+          id,
+          state: 'amount_entered',
+          requestedAmount: params.satsAmount,
+          requestedCurrency: 'sat',
+          satsAmount: params.satsAmount,
+          fiatAmount: params.fiatAmount,
+          fiatCurrency: params.fiatCurrency,
+          exchangeRate: params.exchangeRate || 0,
+          memo: params.memo,
+          createdAt: new Date(),
+        };
 
-  updatePaymentState: (state) => {
-    set((store) => {
-      if (!store.currentPayment) return store;
-      return {
-        currentPayment: {
-          ...store.currentPayment,
-          state,
-        },
-      };
-    });
-  },
+        set({ currentPayment: payment });
+        return payment;
+      },
 
-  setReceivedToken: (token, amount) => {
-    set((store) => {
-      if (!store.currentPayment) return store;
+      updatePaymentState: (state) => {
+        set((store) => {
+          if (!store.currentPayment) return store;
+          return {
+            currentPayment: {
+              ...store.currentPayment,
+              state,
+            },
+          };
+        });
+      },
 
-      // Calculate hash synchronously using a simple approach
-      // In production, use async hash
-      const tokenHash = `hash_${Date.now()}`;
+      setReceivedToken: (token, amount) => {
+        set((store) => {
+          if (!store.currentPayment) return store;
 
-      return {
-        currentPayment: {
-          ...store.currentPayment,
-          receivedToken: token,
-          receivedAmount: amount,
-          tokenHash,
-        },
-      };
-    });
-  },
+          // Calculate hash synchronously using a simple approach
+          // In production, use async hash
+          const tokenHash = `hash_${Date.now()}`;
 
-  setOverpayment: (info) => {
-    set((store) => {
-      if (!store.currentPayment) return store;
-      return {
-        currentPayment: {
-          ...store.currentPayment,
-          overpayment: info,
-          state: 'overpaid',
-        },
-      };
-    });
-  },
+          return {
+            currentPayment: {
+              ...store.currentPayment,
+              receivedToken: token,
+              receivedAmount: amount,
+              tokenHash,
+            },
+          };
+        });
+      },
 
-  setChangeToken: (changeToken) => {
-    set((store) => {
-      if (!store.currentPayment?.overpayment) return store;
-      return {
-        currentPayment: {
-          ...store.currentPayment,
-          overpayment: {
-            ...store.currentPayment.overpayment,
-            handling: 'change',
-            changeToken,
-          },
-        },
-      };
-    });
-  },
+      setOverpayment: (info) => {
+        set((store) => {
+          if (!store.currentPayment) return store;
+          return {
+            currentPayment: {
+              ...store.currentPayment,
+              overpayment: info,
+              state: 'overpaid',
+            },
+          };
+        });
+      },
 
-  completePayment: (transactionId) => {
-    set((store) => {
-      if (!store.currentPayment) return store;
+      setChangeToken: (changeToken) => {
+        set((store) => {
+          if (!store.currentPayment?.overpayment) return store;
+          return {
+            currentPayment: {
+              ...store.currentPayment,
+              overpayment: {
+                ...store.currentPayment.overpayment,
+                handling: 'change',
+                changeToken,
+              },
+            },
+          };
+        });
+      },
 
-      const completedPayment: Payment = {
-        ...store.currentPayment,
-        state: 'completed',
-        transactionId,
-        completedAt: new Date(),
-      };
+      completePayment: (transactionId) => {
+        set((store) => {
+          if (!store.currentPayment) return store;
 
-      // Add to recent payments (keep last 10)
-      const recentPayments = [
-        completedPayment,
-        ...store.recentPayments.slice(0, 9),
-      ];
+          const completedPayment: Payment = {
+            ...store.currentPayment,
+            state: 'completed',
+            transactionId,
+            completedAt: new Date(),
+          };
 
-      return {
-        currentPayment: completedPayment,
-        recentPayments,
-      };
-    });
-  },
+          // Add to recent payments (keep last MAX_RECENT_PAYMENTS)
+          const recentPayments = [
+            completedPayment,
+            ...store.recentPayments.slice(0, MAX_RECENT_PAYMENTS - 1),
+          ];
 
-  failPayment: (error) => {
-    set((store) => {
-      if (!store.currentPayment) return store;
-      return {
-        currentPayment: {
-          ...store.currentPayment,
-          state: 'failed',
-          error,
-        },
-      };
-    });
-  },
+          return {
+            currentPayment: completedPayment,
+            recentPayments,
+          };
+        });
+      },
 
-  cancelPayment: () => {
-    set({ currentPayment: null, lightningInvoice: null, paymentMethod: 'cashu' });
-  },
+      failPayment: (error) => {
+        set((store) => {
+          if (!store.currentPayment) return store;
+          return {
+            currentPayment: {
+              ...store.currentPayment,
+              state: 'failed',
+              error,
+            },
+          };
+        });
+      },
 
-  clearCurrentPayment: () => {
-    set({ currentPayment: null, lightningInvoice: null, paymentMethod: 'cashu' });
-  },
+      cancelPayment: () => {
+        set({ currentPayment: null, lightningInvoice: null, paymentMethod: 'cashu' });
+      },
 
-  getCurrentPayment: () => get().currentPayment,
-}));
+      clearCurrentPayment: () => {
+        set({ currentPayment: null, lightningInvoice: null, paymentMethod: 'cashu' });
+      },
+
+      getCurrentPayment: () => get().currentPayment,
+    }),
+    {
+      name: 'cashupay-payments',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist recentPayments (not transient state)
+      partialize: (state) => ({
+        recentPayments: state.recentPayments,
+      }),
+      // Deserialize dates when loading from storage
+      onRehydrateStorage: () => (state) => {
+        if (state?.recentPayments) {
+          state.recentPayments = state.recentPayments.map(deserializePayment);
+        }
+      },
+    }
+  )
+);

@@ -6,6 +6,7 @@
 
 import type { ExchangeRate } from '@/types/payment';
 import type { CurrencyConfig } from '@/types/config';
+import { useConfigStore } from '@/store/config.store';
 
 // Cache for exchange rates
 const rateCache = new Map<string, ExchangeRate>();
@@ -141,6 +142,10 @@ export async function getExchangeRate(
       config?.customExchangeRateUrl
     );
     rateCache.set(cacheKey, rate);
+
+    // Update store with new rate
+    useConfigStore.getState().setExchangeRate(rate.ratePerBtc);
+
     return rate;
   } catch (error) {
     // If fetch fails and we have a cached rate, return it with a warning

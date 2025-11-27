@@ -20,6 +20,10 @@ import { useCatalogStore, useCartStore } from '@/store';
 import type { ProductVariant, ModifierGroup, Modifier } from '@/types/catalog';
 import type { SelectedModifier } from '@/types/cart';
 import { useToast } from '@/hooks/useToast';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { getCurrencySymbol } from '@/constants/currencies';
+import { useConfigStore } from '@/store/config.store';
+import { fiatToSatsSync } from '@/services/exchange-rate.service';
 
 // Format price from cents to display string
 function formatPrice(cents: number): string {
@@ -188,6 +192,8 @@ export default function ProductDetailScreen() {
   const product = useCatalogStore((s) => s.getProduct(id));
   const modifierGroups = useCatalogStore((s) => s.getModifierGroupsForProduct(id));
   const addToCart = useCartStore((s) => s.addToCart);
+  const { currency } = useConfigStore();
+  const isSatsMain = currency.priceDisplayMode === 'sats_fiat' || currency.priceDisplayMode === 'sats_only';
 
   // Local state
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(
@@ -312,8 +318,16 @@ export default function ProductDetailScreen() {
               <Text style={styles.productDescription}>{product.description}</Text>
             )}
             <Text style={styles.basePrice}>
-              Starting at {formatTotalPrice(product.price)}
+              Starting at
             </Text>
+            <PriceDisplay
+              fiatAmount={product.price / 100}
+              satsAmount={currency.exchangeRate ? (fiatToSatsSync(product.price / 100, currency.displayCurrency) ?? 0) : 0}
+              currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+              fiatStyle={isSatsMain ? styles.basePriceSats : styles.basePriceValue}
+              satsStyle={isSatsMain ? styles.basePriceValue : styles.basePriceSats}
+              showSats={true}
+            />
           </View>
         </View>
 
@@ -361,9 +375,17 @@ export default function ProductDetailScreen() {
       {/* Add to Cart Button */}
       <View style={styles.footer}>
         <Pressable style={styles.addButton} onPress={handleAddToCart}>
-          <Text style={styles.addButtonText}>
-            Add to Cart - {formatTotalPrice(totalPrice)}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.addButtonText}>Add to Cart -</Text>
+            <PriceDisplay
+              fiatAmount={totalPrice / 100}
+              satsAmount={currency.exchangeRate ? (fiatToSatsSync(totalPrice / 100, currency.displayCurrency) ?? 0) : 0}
+              currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+              fiatStyle={isSatsMain ? styles.addButtonSats : styles.addButtonText}
+              satsStyle={isSatsMain ? styles.addButtonText : styles.addButtonSats}
+              showSats={true}
+            />
+          </View>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -431,10 +453,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   basePrice: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 8,
+  },
+  basePriceValue: {
     fontSize: 18,
     color: '#4ade80',
     fontWeight: '600',
-    marginTop: 8,
+  },
+  basePriceSats: {
+    fontSize: 14,
+    color: '#4ade80',
+    fontWeight: '500',
+    opacity: 0.8,
   },
   section: {
     padding: 20,
@@ -562,5 +594,11 @@ const styles = StyleSheet.create({
     color: '#0f0f1a',
     fontSize: 18,
     fontWeight: '700',
+  },
+  addButtonSats: {
+    color: '#0f0f1a',
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.8,
   },
 });

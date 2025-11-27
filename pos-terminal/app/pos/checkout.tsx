@@ -23,7 +23,10 @@ import type { OrderType } from '@/types/cart';
 import {
   getExchangeRate,
   fiatToSats,
+  fiatToSatsSync,
 } from '@/services/exchange-rate.service';
+import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { getCurrencySymbol } from '@/constants/currencies';
 import { useToast } from '@/hooks/useToast';
 
 // Format price from cents to display string
@@ -59,6 +62,7 @@ export default function CheckoutScreen() {
 
   // Config
   const currency = useConfigStore((s) => s.currency);
+  const isSatsMain = currency.priceDisplayMode === 'sats_fiat' || currency.priceDisplayMode === 'sats_only';
 
   // Local state
   const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(null);
@@ -215,7 +219,15 @@ export default function CheckoutScreen() {
                   )}
                 </View>
               </View>
-              <Text style={styles.summaryItemPrice}>{formatPrice(item.subtotal)}</Text>
+              <PriceDisplay
+                fiatAmount={item.subtotal / 100}
+                satsAmount={currency.exchangeRate ? (fiatToSatsSync(item.subtotal / 100, currency.displayCurrency) ?? 0) : 0}
+                currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                fiatStyle={isSatsMain ? styles.summaryItemPriceSatsText : styles.summaryItemPriceText}
+                satsStyle={isSatsMain ? styles.summaryItemPriceText : styles.summaryItemPriceSatsText}
+                style={styles.summaryItemPriceContainer}
+                showSats={true}
+              />
             </View>
           ))}
         </View>
@@ -315,7 +327,14 @@ export default function CheckoutScreen() {
 
           <View style={[styles.totalRow, styles.grandTotalRow]}>
             <Text style={styles.grandTotalLabel}>Total</Text>
-            <Text style={styles.grandTotalValue}>{formatPrice(cartTotals.total)}</Text>
+            <PriceDisplay
+              fiatAmount={cartTotals.total / 100}
+              satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.total / 100, currency.displayCurrency) ?? 0) : 0}
+              currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+              fiatStyle={isSatsMain ? styles.grandTotalSats : styles.grandTotalValue}
+              satsStyle={isSatsMain ? styles.grandTotalValue : styles.grandTotalSats}
+              showSats={true}
+            />
           </View>
         </View>
       </ScrollView>
@@ -327,9 +346,21 @@ export default function CheckoutScreen() {
           onPress={handleProceedToPayment}
           disabled={isLoading}
         >
-          <Text style={styles.chargeButtonText}>
-            {isLoading ? 'Processing...' : `Charge ${formatPrice(cartTotals.total)}`}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.chargeButtonText}>
+              {isLoading ? 'Processing...' : 'Charge'}
+            </Text>
+            {!isLoading && (
+              <PriceDisplay
+                fiatAmount={cartTotals.total / 100}
+                satsAmount={currency.exchangeRate ? (fiatToSatsSync(cartTotals.total / 100, currency.displayCurrency) ?? 0) : 0}
+                currencySymbol={getCurrencySymbol(currency.displayCurrency)}
+                fiatStyle={isSatsMain ? styles.chargeButtonSats : styles.chargeButtonText}
+                satsStyle={isSatsMain ? styles.chargeButtonText : styles.chargeButtonSats}
+                showSats={true}
+              />
+            )}
+          </View>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -438,11 +469,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: 'italic',
   },
-  summaryItemPrice: {
+  summaryItemPriceContainer: {
+    marginLeft: 12,
+  },
+  summaryItemPriceText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 12,
+  },
+  summaryItemPriceSatsText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.7,
   },
   tipPresets: {
     flexDirection: 'row',
@@ -551,6 +590,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
   },
+  grandTotalSats: {
+    color: '#4ade80',
+    fontSize: 18,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
   footer: {
     padding: 16,
     borderTopWidth: 1,
@@ -569,5 +614,11 @@ const styles = StyleSheet.create({
     color: '#0f0f1a',
     fontSize: 20,
     fontWeight: '700',
+  },
+  chargeButtonSats: {
+    color: '#0f0f1a',
+    fontSize: 16,
+    fontWeight: '600',
+    opacity: 0.8,
   },
 });

@@ -9,6 +9,7 @@ import { Link, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useConfigStore } from '../../src/store/config.store';
+import { useCatalogStore } from '../../src/store/catalog.store';
 
 interface SettingsSectionProps {
   title: string;
@@ -41,6 +42,8 @@ export default function SettingsScreen() {
   const currency = useConfigStore((state) => state.currency);
   const primaryMint = useConfigStore((state) => state.mints.primaryMintUrl);
   const trustedMints = useConfigStore((state) => state.mints.trusted);
+  const products = useCatalogStore((state) => state.products);
+  const categories = useCatalogStore((state) => state.categories);
 
   const mintDisplay = primaryMint
     ? new URL(primaryMint).hostname
@@ -63,6 +66,18 @@ export default function SettingsScreen() {
               <Text style={styles.infoValue}>{terminalName}</Text>
             </View>
           </View>
+        </View>
+
+        {/* Catalog Management */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Catalog</Text>
+
+          <SettingsSection
+            title="Products & Categories"
+            description="Manage your product catalog"
+            href="/settings/catalog"
+            value={`${products.length} products`}
+          />
         </View>
 
         {/* Mint Configuration */}

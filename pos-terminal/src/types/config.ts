@@ -59,6 +59,7 @@ export interface CurrencyConfig {
   // Sats display
   showSatsBelow: boolean;
   satsDisplayFormat: 'sats' | 'btc';
+  priceDisplayMode: 'fiat_sats' | 'sats_fiat' | 'sats_only';
 
   // Exchange rate source
   exchangeRateSource: 'coingecko' | 'kraken' | 'binance' | 'custom';
@@ -226,6 +227,7 @@ export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
   fiatDecimals: 2,
   showSatsBelow: true,
   satsDisplayFormat: 'sats',
+  priceDisplayMode: 'fiat_sats',
   exchangeRateSource: 'coingecko',
   rateRefreshInterval: 60,
   offlineRateBehavior: 'use_cached',

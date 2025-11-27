@@ -17,22 +17,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useConfigStore } from '../../src/store/config.store';
 
-const CURRENCIES = [
-  { code: 'USD', name: 'US Dollar', symbol: '$' },
-  { code: 'EUR', name: 'Euro', symbol: '€' },
-  { code: 'GBP', name: 'British Pound', symbol: '£' },
-  { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
-  { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF' },
-  { code: 'CAD', name: 'Canadian Dollar', symbol: 'CA$' },
-  { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
-  { code: 'MXN', name: 'Mexican Peso', symbol: 'MX$' },
-  { code: 'BRL', name: 'Brazilian Real', symbol: 'R$' },
-];
+import { CURRENCIES } from '@/constants/currencies';
 
 export default function CurrencySettingsScreen() {
   const currency = useConfigStore((state) => state.currency);
   const setDisplayCurrency = useConfigStore((state) => state.setDisplayCurrency);
-  const setShowSatsBelow = useConfigStore((state) => state.setShowSatsBelow);
+  const setPriceDisplayMode = useConfigStore((state) => state.setPriceDisplayMode);
+  const setSatsDisplayFormat = useConfigStore((state) => state.setSatsDisplayFormat);
 
   const handleCurrencySelect = useCallback(
     (currencyCode: string) => {
@@ -41,12 +32,7 @@ export default function CurrencySettingsScreen() {
     [setDisplayCurrency]
   );
 
-  const handleToggleSats = useCallback(
-    (value: boolean) => {
-      setShowSatsBelow(value);
-    },
-    [setShowSatsBelow]
-  );
+
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -55,19 +41,78 @@ export default function CurrencySettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Display Options</Text>
 
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleInfo}>
-              <Text style={styles.toggleLabel}>Show Sats Below Price</Text>
-              <Text style={styles.toggleDescription}>
-                Display satoshi equivalent under fiat amounts
-              </Text>
+          {/* Price Display Mode */}
+          <View style={styles.settingGroup}>
+            <Text style={styles.settingLabel}>Price Display</Text>
+            <View style={styles.optionsRow}>
+              <Pressable
+                style={[
+                  styles.optionButton,
+                  currency.priceDisplayMode === 'fiat_sats' && styles.optionButtonActive,
+                ]}
+                onPress={() => setPriceDisplayMode('fiat_sats')}
+              >
+                <Text style={[
+                  styles.optionText,
+                  currency.priceDisplayMode === 'fiat_sats' && styles.optionTextActive
+                ]}>Fiat (Sats)</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.optionButton,
+                  currency.priceDisplayMode === 'sats_fiat' && styles.optionButtonActive,
+                ]}
+                onPress={() => setPriceDisplayMode('sats_fiat')}
+              >
+                <Text style={[
+                  styles.optionText,
+                  currency.priceDisplayMode === 'sats_fiat' && styles.optionTextActive
+                ]}>Sats (Fiat)</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.optionButton,
+                  currency.priceDisplayMode === 'sats_only' && styles.optionButtonActive,
+                ]}
+                onPress={() => setPriceDisplayMode('sats_only')}
+              >
+                <Text style={[
+                  styles.optionText,
+                  currency.priceDisplayMode === 'sats_only' && styles.optionTextActive
+                ]}>Sats Only</Text>
+              </Pressable>
             </View>
-            <Switch
-              value={currency.showSatsBelow}
-              onValueChange={handleToggleSats}
-              trackColor={{ false: '#2a2a3e', true: '#4ade80' }}
-              thumbColor="#ffffff"
-            />
+          </View>
+
+          {/* Sats Format */}
+          <View style={styles.settingGroup}>
+            <Text style={styles.settingLabel}>Sats Format</Text>
+            <View style={styles.optionsRow}>
+              <Pressable
+                style={[
+                  styles.optionButton,
+                  currency.satsDisplayFormat === 'sats' && styles.optionButtonActive,
+                ]}
+                onPress={() => setSatsDisplayFormat('sats')}
+              >
+                <Text style={[
+                  styles.optionText,
+                  currency.satsDisplayFormat === 'sats' && styles.optionTextActive
+                ]}>123 sats</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.optionButton,
+                  currency.satsDisplayFormat === 'btc' && styles.optionButtonActive,
+                ]}
+                onPress={() => setSatsDisplayFormat('btc')}
+              >
+                <Text style={[
+                  styles.optionText,
+                  currency.satsDisplayFormat === 'btc' && styles.optionTextActive
+                ]}>₿123</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
 
@@ -145,27 +190,39 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 16,
   },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1a1a2e',
-    padding: 16,
-    borderRadius: 8,
+  settingGroup: {
+    marginBottom: 20,
   },
-  toggleInfo: {
-    flex: 1,
-    marginRight: 16,
-  },
-  toggleLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+  settingLabel: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#ffffff',
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  toggleDescription: {
+  optionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  optionButton: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  optionButtonActive: {
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    borderColor: '#4ade80',
+  },
+  optionText: {
     fontSize: 14,
     color: '#888',
+  },
+  optionTextActive: {
+    color: '#4ade80',
+    fontWeight: '600',
   },
   currencyItem: {
     flexDirection: 'row',
