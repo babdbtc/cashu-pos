@@ -1,4 +1,4 @@
-# CashuPay System
+# Cashu Point of Sale system
 
 A self-hosted payment processing system using Cashu ecash, enabling Lightning-compatible payments with NFC tap-to-pay support.
 
@@ -29,7 +29,7 @@ The tradeoff is clear: Cashu sacrifices self-custody for better UX. For small-to
 ## Project Structure
 
 ```
-cashupaysystem/
+cashu-pos/
 ├── pos-terminal/               # Expo React Native POS app
 │   ├── app/                    # Screens (Expo Router)
 │   │   ├── index.tsx           # Home screen
