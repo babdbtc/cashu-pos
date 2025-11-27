@@ -4,7 +4,7 @@
  * Shows payment success or failure with receipt option.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -12,10 +12,17 @@ import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { usePaymentStore } from '@/store/payment.store';
+import { useConfigStore } from '@/store/config.store';
+import { receiptService } from '@/services/receipt.service';
+import { useToast } from '@/hooks/useToast';
 
 export default function ResultScreen() {
   const router = useRouter();
   const { currentPayment, clearCurrentPayment } = usePaymentStore();
+  const { merchantName, terminalName, terminalId } = useConfigStore();
+  const { showSuccess, showError } = useToast();
+
+  const [isPrinting, setIsPrinting] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -74,9 +81,34 @@ export default function ResultScreen() {
     router.replace('/amount');
   };
 
-  const handlePrintReceipt = () => {
-    // TODO: Implement receipt printing
-    console.log('Print receipt');
+  const handlePrintReceipt = async () => {
+    if (!currentPayment || isPrinting) return;
+
+    setIsPrinting(true);
+    try {
+      const receipt = receiptService.generateReceipt(currentPayment, {
+        merchantName: merchantName || 'CashuPay Merchant',
+        terminalName: terminalName || 'Terminal 1',
+        terminalId: terminalId || 'unknown',
+      });
+
+      const success = await receiptService.printReceipt(receipt, {
+        includeTaxInfo: true,
+      });
+
+      if (success) {
+        showSuccess('Receipt printed successfully');
+        // Also save receipt to local storage
+        await receiptService.saveReceipt(receipt);
+      } else {
+        showError('Failed to print receipt');
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      showError('Failed to print receipt');
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   // Show nothing while redirecting
@@ -141,11 +173,12 @@ export default function ResultScreen() {
         {isSuccess ? (
           <>
             <Button
-              title="Print Receipt"
+              title={isPrinting ? "Printing..." : "Print Receipt"}
               onPress={handlePrintReceipt}
               variant="secondary"
               size="lg"
               fullWidth
+              disabled={isPrinting}
             />
             <Button
               title="Done"

@@ -19,6 +19,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCatalogStore, useCartStore } from '@/store';
 import type { ProductVariant, ModifierGroup, Modifier } from '@/types/catalog';
 import type { SelectedModifier } from '@/types/cart';
+import { useToast } from '@/hooks/useToast';
 
 // Format price from cents to display string
 function formatPrice(cents: number): string {
@@ -181,6 +182,7 @@ function QuantitySelector({
 export default function ProductDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { showError } = useToast();
 
   // Get product from store
   const product = useCatalogStore((s) => s.getProduct(id));
@@ -264,7 +266,7 @@ export default function ProductDetailScreen() {
           (m) => m.modifierGroupId === group.id
         );
         if (!hasSelection) {
-          // TODO: Show error toast
+          showError(`Please select a ${group.name}`);
           return;
         }
       }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -7,10 +7,12 @@ import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { usePaymentStore } from '@/store/payment.store';
+import { useToast } from '@/hooks/useToast';
 
 export default function ExportScreen() {
     const router = useRouter();
     const { recentPayments } = usePaymentStore();
+    const { showSuccess, showError, showInfo } = useToast();
     const [isExporting, setIsExporting] = useState(false);
 
     const handleExport = async (format: 'csv' | 'json') => {
@@ -18,7 +20,7 @@ export default function ExportScreen() {
             setIsExporting(true);
 
             if (recentPayments.length === 0) {
-                Alert.alert('Info', 'No transactions to export.');
+                showInfo('No transactions to export');
                 return;
             }
 
@@ -55,13 +57,14 @@ export default function ExportScreen() {
 
             if (await Sharing.isAvailableAsync()) {
                 await Sharing.shareAsync(filePath);
+                showSuccess(`Exported ${recentPayments.length} transactions as ${format.toUpperCase()}`);
             } else {
-                Alert.alert('Error', 'Sharing is not available on this device');
+                showError('Sharing is not available on this device');
             }
 
         } catch (error) {
             console.error(error);
-            Alert.alert('Error', 'Export failed');
+            showError('Export failed. Please try again.');
         } finally {
             setIsExporting(false);
         }

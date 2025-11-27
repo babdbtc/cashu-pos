@@ -10,34 +10,37 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 import { colors } from '@/theme';
+import { ToastProvider } from '@/hooks/useToast';
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background.primary },
-            animation: 'fade',
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="amount" />
-          <Stack.Screen
-            name="payment"
-            options={{
-              gestureEnabled: false,
+        <ToastProvider>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background.primary },
+              animation: 'fade',
             }}
-          />
-          <Stack.Screen
-            name="result"
-            options={{
-              gestureEnabled: false,
-            }}
-          />
-        </Stack>
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="amount" />
+            <Stack.Screen
+              name="payment"
+              options={{
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="result"
+              options={{
+                gestureEnabled: false,
+              }}
+            />
+          </Stack>
+        </ToastProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

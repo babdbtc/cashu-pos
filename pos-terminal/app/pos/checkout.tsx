@@ -24,6 +24,7 @@ import {
   getExchangeRate,
   fiatToSats,
 } from '@/services/exchange-rate.service';
+import { useToast } from '@/hooks/useToast';
 
 // Format price from cents to display string
 function formatPrice(cents: number): string {
@@ -39,6 +40,7 @@ const ORDER_TYPES: { value: OrderType; label: string; icon: string }[] = [
 
 export default function CheckoutScreen() {
   const router = useRouter();
+  const { showError } = useToast();
 
   // Cart state
   const cart = useCartStore((s) => s.cart);
@@ -136,11 +138,11 @@ export default function CheckoutScreen() {
       router.push('/payment');
     } catch (error) {
       console.error('Failed to create payment:', error);
-      // TODO: Show error toast
+      showError('Failed to create payment. Please try again.');
     } finally {
       setIsLoading(false);
     }
-  }, [cart.items, cartTotals.total, currency.displayCurrency, createPayment, router]);
+  }, [cart.items, cartTotals.total, currency.displayCurrency, createPayment, router, showError]);
 
   // Handle order complete (called after successful payment)
   const handleOrderComplete = useCallback(() => {

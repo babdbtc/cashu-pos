@@ -4,8 +4,8 @@
  * Allows merchant to enter payment amount using a numpad.
  */
 
-import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Screen } from '@/components/layout';
@@ -14,6 +14,12 @@ import { NumPad } from '@/components/payment/NumPad';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { usePaymentStore } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
+import {
+  getExchangeRate,
+  startRateRefresh,
+  fiatToSatsSync,
+} from '@/services/exchange-rate.service';
+import type { ExchangeRate } from '@/types/payment';
 
 export default function AmountScreen() {
   const router = useRouter();
@@ -23,12 +29,40 @@ export default function AmountScreen() {
   // Amount in cents (or smallest currency unit)
   const [amountCents, setAmountCents] = useState(0);
 
-  // For demo purposes, using a fixed exchange rate
-  // In production, this would come from exchange-rate.service
-  const exchangeRate = 100000; // sats per USD (example: $1 = 100,000 sats)
+  // Exchange rate state
+  const [rate, setRate] = useState<ExchangeRate | null>(null);
+  const [rateLoading, setRateLoading] = useState(true);
+
+  // Fetch and auto-refresh exchange rate
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    const initRate = async () => {
+      try {
+        const fetchedRate = await getExchangeRate(currency.displayCurrency, currency);
+        setRate(fetchedRate);
+        // Start auto-refresh based on config interval
+        cleanup = startRateRefresh(
+          currency.displayCurrency,
+          currency.rateRefreshInterval,
+          currency
+        );
+      } catch (error) {
+        console.error('Failed to fetch exchange rate:', error);
+      } finally {
+        setRateLoading(false);
+      }
+    };
+
+    initRate();
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [currency.displayCurrency, currency.rateRefreshInterval]);
 
   const displayAmount = (amountCents / 100).toFixed(2);
-  const satsAmount = Math.round((amountCents / 100) * exchangeRate);
+  const satsAmount = rate ? fiatToSatsSync(amountCents / 100, currency.displayCurrency) ?? 0 : 0;
 
   const handleKeyPress = useCallback((key: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -47,14 +81,14 @@ export default function AmountScreen() {
   }, [amountCents]);
 
   const handleContinue = () => {
-    if (satsAmount <= 0) return;
+    if (satsAmount <= 0 || !rate) return;
 
     // Create payment in store
     createPayment({
       satsAmount,
       fiatAmount: amountCents / 100,
       fiatCurrency: currency.displayCurrency,
-      exchangeRate,
+      exchangeRate: rate.ratePerBtc,
     });
 
     router.push('/payment');
@@ -82,9 +116,17 @@ export default function AmountScreen() {
           <Text style={styles.amount}>{displayAmount}</Text>
         </View>
 
-        {satsAmount > 0 && (
+        {rateLoading ? (
+          <ActivityIndicator color={colors.accent.primary} style={{ marginTop: spacing.md }} />
+        ) : satsAmount > 0 ? (
           <Text style={styles.satsAmount}>
             {satsAmount.toLocaleString()} sats
+          </Text>
+        ) : null}
+
+        {rate && !rateLoading && (
+          <Text style={styles.rateInfo}>
+            1 BTC = {rate.ratePerBtc.toLocaleString()} {currency.displayCurrency}
           </Text>
         )}
       </View>
@@ -102,7 +144,7 @@ export default function AmountScreen() {
           variant="primary"
           size="lg"
           fullWidth
-          disabled={satsAmount <= 0}
+          disabled={satsAmount <= 0 || rateLoading || !rate}
         />
       </View>
     </Screen>
@@ -152,6 +194,11 @@ const styles = StyleSheet.create({
     ...typography.bodyLarge,
     color: colors.accent.primary,
     marginTop: spacing.md,
+  },
+  rateInfo: {
+    ...typography.caption,
+    color: colors.text.muted,
+    marginTop: spacing.sm,
   },
   numpadContainer: {
     flex: 1,
