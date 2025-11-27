@@ -2,6 +2,8 @@
 
 A self-hosted payment processing system using Cashu ecash, enabling Lightning-compatible payments with NFC tap-to-pay support.
 
+> **Note:** This project is designed for mobile devices and requires **Expo Go** on iOS or Android. It does **not** support web browsers due to native dependencies like NFC and secure storage.
+
 ## Features
 
 - **NFC Tap-to-Pay** - Accept Cashu tokens via NFC for instant payments
