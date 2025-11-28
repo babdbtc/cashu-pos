@@ -13,6 +13,7 @@ import type {
   PaymentState,
   OverpaymentInfo,
 } from '@/types/payment';
+import type { PaymentErrorDetails } from '@/types/payment-error';
 import { useConfigStore } from './config.store';
 
 export type PaymentMethod = 'cashu' | 'lightning';
@@ -37,6 +38,9 @@ interface PaymentStore {
   // Lightning invoice data
   lightningInvoice: LightningInvoice | null;
 
+  // Error details
+  errorDetails: PaymentErrorDetails | null;
+
   // Recent payments (for quick reference)
   recentPayments: Payment[];
 
@@ -53,6 +57,7 @@ interface PaymentStore {
     fiatCurrency: string;
     exchangeRate?: number;
     memo?: string;
+    cartItems?: any[]; // CartItem[] from cart
   }) => Payment;
 
   updatePaymentState: (state: PaymentState) => void;
@@ -65,7 +70,11 @@ interface PaymentStore {
 
   completePayment: (transactionId: string) => void;
 
-  failPayment: (error: string) => void;
+  failPayment: (error: string | PaymentErrorDetails) => void;
+
+  setPaymentError: (errorDetails: PaymentErrorDetails) => void;
+
+  clearPaymentError: () => void;
 
   cancelPayment: () => void;
 
@@ -103,6 +112,7 @@ export const usePaymentStore = create<PaymentStore>()(
       recentPayments: [],
       paymentMethod: 'cashu',
       lightningInvoice: null,
+      errorDetails: null,
 
       setPaymentMethod: (method) => {
         set({ paymentMethod: method });
@@ -127,6 +137,17 @@ export const usePaymentStore = create<PaymentStore>()(
         // Get current terminal ID
         const { terminalId } = useConfigStore.getState();
 
+        // Create locked rate if exchange rate is provided
+        const lockedRate = params.exchangeRate
+          ? {
+              rate: params.exchangeRate,
+              currency: params.fiatCurrency,
+              lockedAt: Date.now(),
+              expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+              source: 'coingecko',
+            }
+          : undefined;
+
         const payment: Payment = {
           id,
           state: 'amount_entered',
@@ -137,6 +158,8 @@ export const usePaymentStore = create<PaymentStore>()(
           fiatAmount: params.fiatAmount,
           fiatCurrency: params.fiatCurrency,
           exchangeRate: params.exchangeRate || 0,
+          lockedRate,
+          cartItems: params.cartItems,
           memo: params.memo,
           createdAt: new Date(),
         };
@@ -232,22 +255,53 @@ export const usePaymentStore = create<PaymentStore>()(
       failPayment: (error) => {
         set((store) => {
           if (!store.currentPayment) return store;
+
+          // Handle both string and PaymentErrorDetails
+          let errorDetails: PaymentErrorDetails | null = null;
+          let errorMessage: string;
+
+          if (typeof error === 'string') {
+            errorMessage = error;
+          } else {
+            errorDetails = error;
+            errorMessage = error.message;
+          }
+
           return {
             currentPayment: {
               ...store.currentPayment,
               state: 'failed',
-              error,
+              error: errorMessage,
             },
+            errorDetails,
           };
         });
       },
 
+      setPaymentError: (errorDetails) => {
+        set({ errorDetails });
+      },
+
+      clearPaymentError: () => {
+        set({ errorDetails: null });
+      },
+
       cancelPayment: () => {
-        set({ currentPayment: null, lightningInvoice: null, paymentMethod: 'cashu' });
+        set({
+          currentPayment: null,
+          lightningInvoice: null,
+          paymentMethod: 'cashu',
+          errorDetails: null,
+        });
       },
 
       clearCurrentPayment: () => {
-        set({ currentPayment: null, lightningInvoice: null, paymentMethod: 'cashu' });
+        set({
+          currentPayment: null,
+          lightningInvoice: null,
+          paymentMethod: 'cashu',
+          errorDetails: null,
+        });
       },
 
       getCurrentPayment: () => get().currentPayment,

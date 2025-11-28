@@ -253,6 +253,65 @@ export function encodeToken(
 }
 
 /**
+ * Generate a change token by minting new proofs for the change amount
+ * Used when customer overpays and we need to return change
+ */
+export async function generateChangeToken(
+  mintUrl: string,
+  changeAmount: number
+): Promise<string> {
+  try {
+    // For change, we need to mint new tokens from the mint
+    // This requires getting a quote first
+    const { quote, request } = await createMintQuote(mintUrl, changeAmount);
+
+    // In a real scenario, we would need to pay the Lightning invoice
+    // For now, we'll assume this is internally funded
+    // Or we could use existing proofs to swap into the change amount
+
+    // Simpler approach: Use splitTokens from our wallet
+    // This assumes we have proofs available
+    // For a complete implementation, this should integrate with wallet balance
+
+    throw new Error('generateChangeToken requires wallet integration - use wallet proofs');
+  } catch (error) {
+    console.error('Failed to generate change token:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create a change token from existing wallet proofs
+ * This is the preferred method for returning change
+ */
+export async function createChangeTokenFromWallet(
+  mintUrl: string,
+  walletProofs: Proof[],
+  changeAmount: number
+): Promise<string> {
+  try {
+    // Calculate total available
+    const totalAmount = walletProofs.reduce((sum, p) => sum + p.amount, 0);
+
+    if (totalAmount < changeAmount) {
+      throw new Error('Insufficient balance to create change token');
+    }
+
+    // Use splitTokens to get exactly the change amount
+    const keepAmount = totalAmount - changeAmount;
+    const { keep, send } = await splitTokens(mintUrl, walletProofs, keepAmount);
+
+    // Encode the "send" proofs as the change token
+    const changeToken = encodeToken(mintUrl, send, 'Change');
+
+    return changeToken;
+  } catch (error) {
+    console.error('Failed to create change token from wallet:', error);
+    throw error;
+  }
+}
+
+/**
  * Get mint information
  */
 export async function getMintInfo(mintUrl: string): Promise<MintInfo | null> {

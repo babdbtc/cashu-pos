@@ -15,6 +15,7 @@ import { colors, spacing, typography, borderRadius } from '@/theme';
 import { getCurrencySymbol } from '@/constants/currencies';
 import { usePaymentStore } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
+import { useCartStore } from '@/store/cart.store';
 import { receiptService } from '@/services/receipt.service';
 import { useToast } from '@/hooks/useToast';
 
@@ -22,6 +23,7 @@ export default function ResultScreen() {
   const router = useRouter();
   const { currentPayment, clearCurrentPayment } = usePaymentStore();
   const { merchantName, terminalName, terminalId } = useConfigStore();
+  const { clearCart } = useCartStore();
   const { showSuccess, showError } = useToast();
 
   const [isPrinting, setIsPrinting] = useState(false);
@@ -44,6 +46,8 @@ export default function ResultScreen() {
     // Play haptic feedback
     if (isSuccess) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Clear cart after successful payment
+      clearCart();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
@@ -63,15 +67,7 @@ export default function ResultScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-
-    // Auto-return to home after success
-    if (isSuccess) {
-      const timer = setTimeout(() => {
-        handleDone();
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [currentPayment, isSuccess]);
+  }, [currentPayment, isSuccess, clearCart]);
 
   const handleDone = () => {
     clearCurrentPayment();
@@ -164,11 +160,6 @@ export default function ResultScreen() {
           </Text>
         )}
       </Animated.View>
-
-      {/* Auto-return countdown for success */}
-      {isSuccess && (
-        <Text style={styles.countdown}>Returning to home in 5 seconds...</Text>
-      )}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -284,11 +275,6 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
     maxWidth: 280,
-  },
-  countdown: {
-    ...typography.bodySmall,
-    color: colors.text.muted,
-    marginBottom: spacing.xxl,
   },
   actions: {
     width: '100%',

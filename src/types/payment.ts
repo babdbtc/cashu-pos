@@ -2,6 +2,8 @@
  * Payment-related types for the POS terminal
  */
 
+import type { CartItem } from './cart';
+
 export type PaymentState =
   | 'idle'
   | 'pending'
@@ -39,6 +41,15 @@ export interface Payment {
   // Exchange rate at time of payment
   exchangeRate: number;
 
+  // Locked exchange rate (with expiry)
+  lockedRate?: {
+    rate: number;
+    currency: string;
+    lockedAt: number;
+    expiresAt: number;
+    source: string;
+  };
+
   // Received payment details
   receivedAmount?: number;
   receivedToken?: string;
@@ -56,6 +67,9 @@ export interface Payment {
 
   // Offline mode
   offlineQueued?: boolean;
+
+  // Cart items (what was purchased)
+  cartItems?: CartItem[];
 
   // Metadata
   memo?: string;

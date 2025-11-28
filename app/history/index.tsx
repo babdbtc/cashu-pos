@@ -14,12 +14,18 @@ import { usePaymentStore } from '../../src/store/payment.store';
 import { useConfigStore } from '../../src/store/config.store';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { getCurrencySymbol } from '@/constants/currencies';
+import { receiptService } from '@/services/receipt.service';
+import { useToast } from '@/hooks/useToast';
 import type { Payment } from '../../src/types/payment';
 
 export default function HistoryScreen() {
   const router = useRouter();
   const recentPayments = usePaymentStore((state) => state.recentPayments);
   const currency = useConfigStore((state) => state.currency);
+  const { merchantName, terminalName, terminalId } = useConfigStore();
+  const { showSuccess, showError } = useToast();
+
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const handleRefund = useCallback((payment: Payment) => {
     if (payment.transactionId) {
@@ -27,11 +33,43 @@ export default function HistoryScreen() {
     }
   }, [router]);
 
+  const handlePrintReceipt = useCallback(async (payment: Payment) => {
+    if (printingId) return; // Prevent multiple simultaneous prints
+
+    setPrintingId(payment.id);
+    try {
+      const receipt = receiptService.generateReceipt(payment, {
+        merchantName: merchantName || 'CashuPay Merchant',
+        terminalName: terminalName || 'Terminal 1',
+        terminalId: terminalId || 'unknown',
+      });
+
+      const success = await receiptService.printReceipt(receipt, {
+        includeTaxInfo: true,
+      });
+
+      if (success) {
+        showSuccess('Receipt printed successfully');
+        // Also save receipt to local storage
+        await receiptService.saveReceipt(receipt);
+      } else {
+        showError('Failed to print receipt');
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      showError('Failed to print receipt');
+    } finally {
+      setPrintingId(null);
+    }
+  }, [printingId, merchantName, terminalName, terminalId, showSuccess, showError]);
+
   const renderPaymentItem = ({ item }: { item: Payment }) => {
     const isSuccess = item.state === 'completed';
     const statusColor = isSuccess ? '#4ade80' : '#ef4444';
     const statusText = isSuccess ? 'Completed' : 'Failed';
     const canRefund = isSuccess && item.transactionId;
+    const isPrinting = printingId === item.id;
+    const hasCartItems = item.cartItems && item.cartItems.length > 0;
 
     return (
       <View style={styles.paymentItem}>
@@ -60,13 +98,52 @@ export default function HistoryScreen() {
           </View>
         </View>
 
-        {canRefund && (
-          <Pressable
-            style={styles.refundButton}
-            onPress={() => handleRefund(item)}
-          >
-            <Text style={styles.refundButtonText}>Refund</Text>
-          </Pressable>
+        {/* Cart Items List */}
+        {hasCartItems && (
+          <View style={styles.cartItemsContainer}>
+            {item.cartItems!.map((cartItem, index) => (
+              <View key={index} style={styles.cartItem}>
+                <Text style={styles.cartItemName}>
+                  {cartItem.quantity}x {cartItem.product.name}
+                  {cartItem.variant && ` (${cartItem.variant.name})`}
+                </Text>
+                {cartItem.selectedModifiers && cartItem.selectedModifiers.length > 0 && (
+                  <Text style={styles.cartItemModifiers}>
+                    + {cartItem.selectedModifiers.map(m => m.modifier.name).join(', ')}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {isSuccess && (
+          <View style={styles.actionButtons}>
+            <Pressable
+              style={[styles.printButton, isPrinting && styles.printButtonDisabled]}
+              onPress={() => handlePrintReceipt(item)}
+              disabled={isPrinting}
+            >
+              <Ionicons
+                name="print-outline"
+                size={16}
+                color={isPrinting ? '#888' : '#4ade80'}
+              />
+              <Text style={[styles.printButtonText, isPrinting && styles.printButtonTextDisabled]}>
+                {isPrinting ? 'Printing...' : 'Print Receipt'}
+              </Text>
+            </Pressable>
+
+            {canRefund && (
+              <Pressable
+                style={styles.refundButton}
+                onPress={() => handleRefund(item)}
+              >
+                <Ionicons name="return-down-back-outline" size={16} color="#ef4444" />
+                <Text style={styles.refundButtonText}>Refund</Text>
+              </Pressable>
+            )}
+          </View>
         )}
       </View>
     );
@@ -214,17 +291,71 @@ const styles = StyleSheet.create({
     color: '#888',
     textAlign: 'center',
   },
-  refundButton: {
+  actionButtons: {
+    flexDirection: 'row',
     marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    gap: 8,
+    alignSelf: 'flex-end',
+  },
+  printButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.3)',
+  },
+  printButtonDisabled: {
+    backgroundColor: 'rgba(136, 136, 136, 0.1)',
+    borderColor: 'rgba(136, 136, 136, 0.2)',
+  },
+  printButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4ade80',
+  },
+  printButtonTextDisabled: {
+    color: '#888',
+  },
+  refundButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
     borderRadius: 8,
-    alignSelf: 'flex-end',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   refundButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#ef4444',
+  },
+  cartItemsContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a3e',
+  },
+  cartItem: {
+    marginBottom: 6,
+  },
+  cartItemName: {
+    fontSize: 13,
+    color: '#ccc',
+    fontWeight: '500',
+  },
+  cartItemModifiers: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
+    marginLeft: 16,
   },
 });

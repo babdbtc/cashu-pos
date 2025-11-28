@@ -4,8 +4,8 @@
  * Displays payment details and waits for NFC tap, QR scan, or Lightning payment.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Easing, ActivityIndicator } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import QRCode from 'react-native-qrcode-svg';
@@ -13,6 +13,10 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { PriceDisplay } from '@/components/common/PriceDisplay';
+import { PaymentStateIndicator } from '@/components/payment/PaymentStateIndicator';
+import { PaymentErrorModal } from '@/components/payment/PaymentErrorModal';
+import { RateLockBadge } from '@/components/payment/RateLockBadge';
+import { RateExpiryOverlay } from '@/components/payment/RateExpiryOverlay';
 import { colors, spacing, typography, borderRadius } from '@/theme';
 import { getCurrencySymbol } from '@/constants/currencies';
 import { usePaymentStore, PaymentMethod } from '@/store/payment.store';
@@ -22,6 +26,8 @@ import { nfcService } from '@/services/nfc.service';
 import { createMintQuote, checkMintQuote, mintTokens, parseToken, swapTokens, encodeToken } from '@/services/cashu.service';
 import { syncTransaction } from '@/services/sync-integration';
 import { tokenForwardService } from '@/services/token-forward.service';
+import { createPaymentError } from '@/types/payment-error';
+import type { PaymentErrorRecovery } from '@/types/payment-error';
 
 export default function PaymentScreen() {
   const router = useRouter();
@@ -36,6 +42,8 @@ export default function PaymentScreen() {
     setLightningInvoice,
     lightningInvoice,
     setLightningPaid,
+    errorDetails,
+    clearPaymentError,
   } = usePaymentStore();
 
   const { mints, currency, terminalType, terminalId, terminalName, merchantId } = useConfigStore();
@@ -53,7 +61,8 @@ export default function PaymentScreen() {
   const [showScanner, setShowScanner] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Rate lock expiry state
+  const [showRateExpiry, setShowRateExpiry] = useState(false);
 
   // Redirect if no payment (must be in useEffect, not during render)
   useEffect(() => {
@@ -61,29 +70,6 @@ export default function PaymentScreen() {
       router.replace('/');
     }
   }, [currentPayment, router]);
-
-  // Start pulse animation
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 1000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulse.start();
-
-    return () => pulse.stop();
-  }, [pulseAnim]);
 
   // Start NFC listening when in Cashu mode (and not showing scanner)
   useEffect(() => {
@@ -244,12 +230,29 @@ export default function PaymentScreen() {
 
     try {
       const parsed = parseToken(tokenString);
-      if (!parsed) throw new Error("Invalid token");
+      if (!parsed) {
+        const error = createPaymentError('invalid_token_format');
+        failPayment(error);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
 
       updatePaymentState('processing');
 
       const mintUrl = parsed.token.mint;
       const txId = `tx_${Date.now()}`;
+
+      // Validate mint if we have a primary mint configured
+      if (primaryMintUrl && mintUrl !== primaryMintUrl) {
+        const error = createPaymentError(
+          'wrong_mint',
+          `Expected: ${primaryMintUrl}, Received: ${mintUrl}`,
+          { expectedMint: primaryMintUrl, receivedMint: mintUrl }
+        );
+        failPayment(error);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
 
       // Check if this is a sub-terminal that should forward tokens to main
       if (shouldForwardTokens && currentPayment) {
@@ -268,8 +271,10 @@ export default function PaymentScreen() {
 
         if (!forwardResult.success) {
           console.error('[Payment] Token forward failed:', forwardResult.error);
-          // Still complete the payment but log the error
-          // Main terminal will eventually receive it via retry
+          // Create warning but still complete locally
+          const error = createPaymentError('forwarding_failed');
+          failPayment(error);
+          // Don't return - continue with local completion
         }
 
         completePayment(txId);
@@ -311,7 +316,62 @@ export default function PaymentScreen() {
       router.replace('/result');
     } catch (error) {
       console.error("Failed to receive token:", error);
-      failPayment("Failed to process payment token. " + (error instanceof Error ? error.message : ""));
+
+      // Determine specific error type
+      let paymentError;
+      if (error instanceof Error) {
+        if (error.message.includes('Network')) {
+          paymentError = createPaymentError('network_timeout', error.message);
+        } else if (error.message.includes('swap')) {
+          paymentError = createPaymentError('swap_failed', error.message);
+        } else {
+          paymentError = createPaymentError('unknown_error', error.message);
+        }
+      } else {
+        paymentError = createPaymentError('unknown_error');
+      }
+
+      failPayment(paymentError);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
+
+  const handleErrorRecovery = (action: PaymentErrorRecovery) => {
+    clearPaymentError();
+
+    switch (action) {
+      case 'retry':
+        // Reset to waiting state and try again
+        updatePaymentState('waiting_for_tap');
+        startNFCListening();
+        break;
+
+      case 'fallback_qr':
+      case 'force_qr':
+        // Switch to QR scanner
+        handleScanQR();
+        break;
+
+      case 'restart':
+        // Go back to start
+        cancelPayment();
+        router.back();
+        break;
+
+      case 'accept_partial':
+        // Continue despite warning (e.g., forwarding failed)
+        router.replace('/result');
+        break;
+
+      case 'contact_support':
+        // Dismiss and go back
+        cancelPayment();
+        router.back();
+        break;
+
+      default:
+        // Default: just clear the error
+        break;
     }
   };
 
@@ -370,6 +430,23 @@ export default function PaymentScreen() {
     }, 1000);
   };
 
+  const handleRateExpired = () => {
+    // Stop payment methods
+    nfcService.cancelReading().catch(() => {});
+    if (pollingInterval) clearInterval(pollingInterval);
+
+    // Show expiry overlay
+    setShowRateExpiry(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  };
+
+  const handleGetNewRate = () => {
+    // Return to previous screen to get new rate
+    setShowRateExpiry(false);
+    cancelPayment();
+    router.back();
+  };
+
   // Show nothing while redirecting
   if (!currentPayment) {
     return null;
@@ -423,76 +500,35 @@ export default function PaymentScreen() {
 
   return (
     <Screen style={styles.screen}>
-      {/* Header */}
+      {/* Header with Cancel and Rate Lock */}
       <View style={styles.header}>
         <Pressable onPress={handleCancel} style={styles.cancelButton}>
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
+        {/* Rate Lock Badge - Top Right */}
+        {currentPayment.lockedRate && (
+          <RateLockBadge
+            lockedRate={currentPayment.lockedRate}
+            onExpired={handleRateExpired}
+          />
+        )}
       </View>
 
-      {/* Amount Display */}
+      {/* Hero Amount Display */}
       <View style={styles.amountSection}>
-        <Text style={styles.label}>Amount Due</Text>
         <PriceDisplay
           fiatAmount={fiatAmount}
           satsAmount={satsAmount}
           currencySymbol={getCurrencySymbol(fiatCurrency)}
+          large
         />
-      </View>
-
-      {/* Payment Method Tabs */}
-      <View style={styles.methodTabs}>
-        <Pressable
-          style={[
-            styles.methodTab,
-            paymentMethod === 'cashu' && styles.methodTabActive,
-          ]}
-          onPress={() => setPaymentMethod('cashu')}
-        >
-          <Text
-            style={[
-              styles.methodTabText,
-              paymentMethod === 'cashu' && styles.methodTabTextActive,
-            ]}
-          >
-            Cashu
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.methodTab,
-            paymentMethod === 'lightning' && styles.methodTabActive,
-          ]}
-          onPress={() => setPaymentMethod('lightning')}
-        >
-          <Text
-            style={[
-              styles.methodTabText,
-              paymentMethod === 'lightning' && styles.methodTabTextActive,
-            ]}
-          >
-            Lightning
-          </Text>
-        </Pressable>
       </View>
 
       {/* Payment Area */}
       <View style={styles.paymentArea}>
         {paymentMethod === 'cashu' ? (
           <View style={styles.nfcContainer}>
-            <Animated.View
-              style={[
-                styles.nfcCircle,
-                { transform: [{ scale: pulseAnim }] },
-              ]}
-            >
-              <Text style={styles.nfcIcon}>NFC</Text>
-            </Animated.View>
-            <Text style={styles.tapText}>Tap to Pay</Text>
-            <Text style={styles.instructionText}>
-              Hold customer's device near the terminal
-            </Text>
+            <PaymentStateIndicator state={currentPayment.state} />
 
             {/* QR Scan Option */}
             <View style={styles.orDivider}>
@@ -547,16 +583,67 @@ export default function PaymentScreen() {
         )}
       </View>
 
-      {/* Dev: Simulate Payment Button */}
-      <View style={styles.footer}>
+      {/* Payment Method Selector - Bottom */}
+      <View style={styles.methodSelector}>
+        <View style={styles.methodPills}>
+          <Pressable
+            style={[
+              styles.methodPill,
+              paymentMethod === 'cashu' && styles.methodPillActive,
+            ]}
+            onPress={() => setPaymentMethod('cashu')}
+          >
+            <Text
+              style={[
+                styles.methodPillText,
+                paymentMethod === 'cashu' && styles.methodPillTextActive,
+              ]}
+            >
+              Cashu
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.methodPill,
+              paymentMethod === 'lightning' && styles.methodPillActive,
+            ]}
+            onPress={() => setPaymentMethod('lightning')}
+          >
+            <Text
+              style={[
+                styles.methodPillText,
+                paymentMethod === 'lightning' && styles.methodPillTextActive,
+              ]}
+            >
+              Lightning
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Dev: Simulate Payment Button */}
         <Button
           title="Simulate Payment (Dev)"
           onPress={handleSimulatePayment}
-          variant="secondary"
-          size="md"
+          variant="ghost"
+          size="sm"
           fullWidth
         />
       </View>
+
+      {/* Error Modal */}
+      <PaymentErrorModal
+        error={errorDetails}
+        visible={!!errorDetails}
+        onRecoveryAction={handleErrorRecovery}
+        onDismiss={clearPaymentError}
+      />
+
+      {/* Rate Expiry Overlay */}
+      <RateExpiryOverlay
+        visible={showRateExpiry}
+        onGetNewRate={handleGetNewRate}
+      />
     </Screen>
   );
 }
@@ -564,90 +651,76 @@ export default function PaymentScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    padding: spacing.xl,
+    padding: spacing.lg,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
-    marginBottom: spacing.lg,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   cancelButton: {
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   cancelText: {
     ...typography.body,
     color: colors.text.secondary,
+    fontSize: 16,
   },
   amountSection: {
     alignItems: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  label: {
-    ...typography.label,
-    marginBottom: spacing.sm,
-  },
-  fiatAmount: {
-    ...typography.amountMedium,
-    marginBottom: spacing.xs,
-  },
-  satsAmount: {
-    ...typography.bodyLarge,
-    color: colors.accent.primary,
-  },
-  methodTabs: {
-    flexDirection: 'row',
-    backgroundColor: colors.background.secondary,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xs,
-    marginBottom: spacing.xxl,
-  },
-  methodTab: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    borderRadius: borderRadius.md,
-  },
-  methodTabActive: {
-    backgroundColor: colors.background.tertiary,
-  },
-  methodTabText: {
-    ...typography.button,
-    color: colors.text.muted,
-  },
-  methodTabTextActive: {
-    color: colors.text.primary,
+    paddingVertical: spacing.lg,
+    marginBottom: spacing.md,
   },
   paymentArea: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: spacing.xl,
   },
   nfcContainer: {
     alignItems: 'center',
-  },
-  nfcCircle: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: colors.accent.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xl,
-  },
-  nfcIcon: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text.inverse,
-  },
-  tapText: {
-    ...typography.h3,
-    marginBottom: spacing.sm,
+    width: '100%',
   },
   instructionText: {
     ...typography.body,
     color: colors.text.secondary,
     textAlign: 'center',
     marginTop: spacing.md,
+  },
+  methodSelector: {
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
+  },
+  methodPills: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  methodPill: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+  },
+  methodPillActive: {
+    backgroundColor: colors.accent.primary,
+    borderColor: colors.accent.primary,
+  },
+  methodPillText: {
+    ...typography.button,
+    color: colors.text.muted,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  methodPillTextActive: {
+    color: colors.text.inverse,
   },
   orDivider: {
     flexDirection: 'row',
@@ -716,9 +789,6 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.accent.success,
     fontWeight: 'bold',
-  },
-  footer: {
-    paddingTop: spacing.lg,
   },
   // Scanner styles
   scannerScreen: {

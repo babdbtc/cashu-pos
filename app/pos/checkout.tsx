@@ -136,6 +136,7 @@ export default function CheckoutScreen() {
         fiatCurrency: currency.displayCurrency,
         exchangeRate: rate.ratePerBtc,
         memo: `Order: ${itemsSummary}`,
+        cartItems: cart.items,
       });
 
       // Navigate to payment screen
