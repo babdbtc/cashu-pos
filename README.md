@@ -206,7 +206,6 @@ See the `docs/` folder for detailed technical documentation:
 - [Nutshell](https://github.com/cashubtc/nutshell) - Python Cashu mint/wallet
 - [cashu-ts](https://github.com/cashubtc/cashu-ts) - TypeScript Cashu library
 - [CDK](https://github.com/cashubtc/cdk) - Cashu Development Kit (Rust)
-- [BTCPay Server](https://btcpayserver.org) - Inspiration for merchant UX
 
 ## License
 
