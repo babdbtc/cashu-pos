@@ -349,6 +349,22 @@ class NostrService {
   }
 
   /**
+   * Publish catalog reset event (for preset loading)
+   */
+  async publishCatalogReset(resetEvent: any): Promise<Event> {
+    return this.publishEvent({
+      kind: EventKinds.CATALOG_RESET,
+      content: JSON.stringify(resetEvent),
+      tags: [
+        ['m', resetEvent.merchantId],
+        ['t', resetEvent.resetBy], // terminal that triggered reset
+        ['d', `catalog-reset-${Date.now()}`], // Unique for each reset
+      ],
+      created_at: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  /**
    * Subscribe to merchant's events
    */
   subscribeMerchantEvents(

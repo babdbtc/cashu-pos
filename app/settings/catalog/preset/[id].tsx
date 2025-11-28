@@ -8,7 +8,9 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useCatalogStore } from '@/store/catalog.store';
+import { syncCatalogReset } from '@/services/sync-integration';
 import { PRESETS } from '../presets';
 
 export default function PresetScreen() {
@@ -97,7 +99,17 @@ export default function PresetScreen() {
                 });
             }
 
-            Alert.alert('Success', 'Catalog preset loaded successfully', [
+            // 5. Sync the catalog reset to other terminals
+            // This sends the entire new catalog atomically so other terminals replace their data
+            try {
+                await syncCatalogReset(id, preset.name);
+                console.log('[Preset] Synced catalog reset to other terminals');
+            } catch (syncError) {
+                console.warn('[Preset] Failed to sync catalog reset (will retry later):', syncError);
+                // Don't fail the whole operation if sync fails - local data is already loaded
+            }
+
+            Alert.alert('Success', 'Catalog preset loaded and synced to all terminals', [
                 { text: 'OK', onPress: () => router.replace('/settings/catalog') }
             ]);
         } catch (error) {
@@ -109,7 +121,12 @@ export default function PresetScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+            {/* Back Button */}
+            <Pressable onPress={() => router.back()} style={styles.navBackButton}>
+                <Ionicons name="chevron-back" size={28} color="#fff" />
+            </Pressable>
+
             <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
                     <Text style={styles.icon}>{preset.icon}</Text>
@@ -185,6 +202,10 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#0f0f1a',
+    },
+    navBackButton: {
+        padding: 12,
+        paddingLeft: 8,
     },
     scrollView: {
         flex: 1,

@@ -6,12 +6,12 @@
  */
 
 import { syncService } from './sync.service';
-import type { Product as CatalogProduct, Category as CatalogCategory } from '@/types/catalog';
+import type { Product as CatalogProduct, Category as CatalogCategory, ModifierGroup } from '@/types/catalog';
 import type { Product as SyncProduct, Category as SyncCategory, Transaction as SyncTransaction } from './database.service';
 import { useConfigStore } from '@/store/config.store';
 import { useCatalogStore } from '@/store/catalog.store';
 import { usePaymentStore } from '@/store/payment.store';
-import { EventKinds, type SettingsSyncEvent } from '@/types/nostr';
+import { EventKinds, type SettingsSyncEvent, type CatalogResetEvent } from '@/types/nostr';
 import type { Payment } from '@/types/payment';
 
 /**
@@ -548,5 +548,132 @@ export function handleIncomingSettings(settings: SettingsSyncEvent): void {
     console.log('[Sync Integration] Applied settings from sync');
   } catch (error) {
     console.error('[Sync Integration] Error handling incoming settings:', error);
+  }
+}
+
+// ==================== CATALOG RESET SYNC ====================
+
+/**
+ * Publish a full catalog reset (for preset loading)
+ * This sends all catalog data atomically so other terminals can replace their catalogs
+ */
+export async function syncCatalogReset(presetId?: string, presetName?: string): Promise<void> {
+  try {
+    const { merchantId, terminalId } = useConfigStore.getState();
+
+    if (!merchantId || !terminalId) {
+      console.log('[Sync Integration] Merchant or terminal ID not set, skipping catalog reset sync');
+      return;
+    }
+
+    const { categories, products, modifierGroups } = useCatalogStore.getState();
+
+    const resetEvent: CatalogResetEvent = {
+      merchantId,
+      resetBy: terminalId,
+      resetAt: Date.now(),
+      presetId,
+      presetName,
+      categories: categories.map(c => ({
+        id: c.id,
+        name: c.name,
+        color: c.color || undefined,
+        icon: c.icon || undefined,
+        sortOrder: c.sort_order,
+      })),
+      products: products.map(p => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        categoryId: p.category_id || undefined,
+        description: p.description || undefined,
+      })),
+      modifierGroups: modifierGroups,
+    };
+
+    await syncService.publishCatalogReset(resetEvent);
+    console.log('[Sync Integration] Published catalog reset with', categories.length, 'categories and', products.length, 'products');
+  } catch (error) {
+    console.error('[Sync Integration] Error syncing catalog reset:', error);
+  }
+}
+
+/**
+ * Handle incoming catalog reset from another terminal
+ * This replaces the entire local catalog with the synced data
+ */
+export function handleIncomingCatalogReset(resetEvent: CatalogResetEvent): void {
+  try {
+    const { terminalId, merchantId } = useConfigStore.getState();
+
+    // Skip if from our own terminal
+    if (resetEvent.resetBy === terminalId) {
+      console.log('[Sync Integration] Skipping own catalog reset');
+      return;
+    }
+
+    // Skip if not for our merchant
+    if (resetEvent.merchantId !== merchantId) {
+      console.log('[Sync Integration] Catalog reset not for our merchant, skipping');
+      return;
+    }
+
+    console.log('[Sync Integration] Applying catalog reset from terminal:', resetEvent.resetBy);
+
+    // Clear existing catalog data
+    useCatalogStore.getState().clearLocalData();
+
+    // Apply new categories
+    for (const cat of resetEvent.categories) {
+      const catalogCategory: CatalogCategory = {
+        id: cat.id,
+        store_id: resetEvent.merchantId,
+        name: cat.name,
+        description: '',
+        color: cat.color || null,
+        icon: cat.icon || null,
+        sort_order: cat.sortOrder,
+        active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date(resetEvent.resetAt).toISOString(),
+      } as CatalogCategory;
+
+      useCatalogStore.getState().addLocalCategory(catalogCategory);
+    }
+
+    // Apply new products
+    for (const prod of resetEvent.products) {
+      const catalogProduct: CatalogProduct = {
+        id: prod.id,
+        store_id: resetEvent.merchantId,
+        name: prod.name,
+        description: prod.description || '',
+        price: prod.price,
+        cost: 0,
+        tax_rate: 0,
+        sku: null,
+        barcode: null,
+        category_id: prod.categoryId || null,
+        image_url: null,
+        active: true,
+        track_inventory: false,
+        allow_backorder: false,
+        has_variants: false,
+        sort_order: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date(resetEvent.resetAt).toISOString(),
+      } as CatalogProduct;
+
+      useCatalogStore.getState().addLocalProduct(catalogProduct);
+    }
+
+    // Apply modifier groups
+    if (resetEvent.modifierGroups && resetEvent.modifierGroups.length > 0) {
+      useCatalogStore.getState().setModifierGroups(resetEvent.modifierGroups);
+    }
+
+    console.log('[Sync Integration] Catalog reset applied:', resetEvent.categories.length, 'categories,', resetEvent.products.length, 'products');
+  } catch (error) {
+    console.error('[Sync Integration] Error handling incoming catalog reset:', error);
   }
 }

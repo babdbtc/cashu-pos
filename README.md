@@ -16,6 +16,20 @@ A self-hosted payment processing system using Cashu ecash, enabling Lightning-co
 - **Transaction Export** - CSV/JSON export for accounting
 - **Multi-Terminal Sync** - Synchronize data across terminals via Nostr relays
 
+## Screenshots
+
+| Home Screen | POS Interface |
+|:---:|:---:|
+| ![Home Screen](docs/images/index.png) | ![POS Interface](docs/images/point-of-sale.png) |
+
+| Checkout | Payment Processing |
+|:---:|:---:|
+| ![Checkout](docs/images/checkout.png) | ![Payment Processing](docs/images/payment-await.png) |
+
+| Admin Dashboard | Sync Settings |
+|:---:|:---:|
+| ![Admin Dashboard](docs/images/admin-dashboard.png) | ![Sync Settings](docs/images/sync-settings.png) |
+
 ## Why Cashu for Payments?
 
 | Feature | Lightning (Direct) | Cashu |

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 
 import { useAlert } from '../../src/hooks/useAlert';
@@ -167,7 +168,11 @@ export default function RefundTransactionScreen() {
   // Handle not found
   if (!transaction) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        {/* Back Button */}
+        <Pressable onPress={() => router.back()} style={styles.navBackButton}>
+          <Ionicons name="chevron-back" size={28} color="#fff" />
+        </Pressable>
         <View style={styles.notFoundContainer}>
           <Text style={styles.notFoundIcon}>🔍</Text>
           <Text style={styles.notFoundTitle}>Transaction Not Found</Text>
@@ -185,7 +190,7 @@ export default function RefundTransactionScreen() {
   // Show success screen with QR code
   if (completedRefund && qrCodeData) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.successContainer}>
           <View style={styles.successIcon}>
             <Text style={styles.successIconText}>✓</Text>
@@ -249,7 +254,7 @@ export default function RefundTransactionScreen() {
   // Show PIN input modal
   if (showPinInput) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.pinContainer}>
           <Text style={styles.pinTitle}>Enter PIN to Approve</Text>
           <Text style={styles.pinSubtitle}>
@@ -302,7 +307,12 @@ export default function RefundTransactionScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.navBackButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Original Transaction */}
         <View style={styles.section}>
@@ -527,6 +537,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  navBackButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

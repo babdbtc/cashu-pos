@@ -18,6 +18,8 @@ export const EventKinds = {
   PRODUCT_DELETE: 30101, // Delete marker
   CATEGORY_CREATE: 30102,
   CATEGORY_UPDATE: 30102,
+  CATEGORY_DELETE: 30103, // Category delete marker
+  CATALOG_RESET: 30104, // Full catalog reset (for preset loading)
 
   // Transactions (append-only, never conflict)
   TRANSACTION: 30200, // Regular event (not replaceable)
@@ -83,6 +85,31 @@ export interface ProductEvent {
   updatedAt: number;
   updatedBy: string; // terminalId
   version: number; // for CRDT
+}
+
+// Catalog reset event (for preset loading)
+export interface CatalogResetEvent {
+  merchantId: string;
+  resetBy: string; // terminalId that triggered reset
+  resetAt: number;
+  presetId?: string; // Optional: which preset was loaded
+  presetName?: string;
+  // Include the new catalog data to ensure atomicity
+  categories: Array<{
+    id: string;
+    name: string;
+    color?: string;
+    icon?: string;
+    sortOrder: number;
+  }>;
+  products: Array<{
+    id: string;
+    name: string;
+    price: number;
+    categoryId?: string;
+    description?: string;
+  }>;
+  modifierGroups: any[];
 }
 
 // Transaction event (append-only)

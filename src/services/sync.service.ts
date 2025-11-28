@@ -15,8 +15,9 @@ import {
   handleIncomingSyncCategoryDeletion,
   handleIncomingSyncTransaction,
   handleIncomingSettings,
+  handleIncomingCatalogReset,
 } from './sync-integration';
-import type { SettingsSyncEvent } from '@/types/nostr';
+import type { SettingsSyncEvent, CatalogResetEvent } from '@/types/nostr';
 import type { Event } from 'nostr-tools';
 
 export interface SyncConfig {
@@ -227,6 +228,10 @@ class SyncService {
           this.handleSettingsEvent(data);
           break;
 
+        case EventKinds.CATALOG_RESET:
+          this.handleCatalogResetEvent(data);
+          break;
+
         // Add more handlers as needed
         default:
           console.log('[Sync] Unknown event kind:', event.kind);
@@ -394,6 +399,14 @@ class SyncService {
   private handleSettingsEvent(data: SettingsSyncEvent): void {
     console.log('[Sync] Received settings update from:', data.updatedBy);
     handleIncomingSettings(data);
+  }
+
+  /**
+   * Handle catalog reset event (for preset loading)
+   */
+  private handleCatalogResetEvent(data: CatalogResetEvent): void {
+    console.log('[Sync] Received catalog reset from:', data.resetBy);
+    handleIncomingCatalogReset(data);
   }
 
   /**
@@ -655,6 +668,26 @@ class SyncService {
     } catch (error) {
       console.error('[Sync] Error publishing settings, queueing:', error);
       await databaseService.queueSyncEvent(EventKinds.SETTINGS_SYNC, settings);
+    }
+  }
+
+  /**
+   * Publish catalog reset (for preset loading)
+   */
+  async publishCatalogReset(resetEvent: CatalogResetEvent): Promise<void> {
+    // Always try to publish catalog resets (they're important for multi-terminal sync)
+    try {
+      // Ensure Nostr is initialized
+      await nostrService.initialize();
+      await nostrService.publishCatalogReset(resetEvent);
+      console.log('[Sync] Published catalog reset');
+    } catch (error) {
+      console.error('[Sync] Error publishing catalog reset:', error);
+      // Try to queue for later if database is ready
+      if (databaseService.isInitialized()) {
+        await databaseService.queueSyncEvent(EventKinds.CATALOG_RESET, resetEvent);
+        console.log('[Sync] Queued catalog reset for later');
+      }
     }
   }
 

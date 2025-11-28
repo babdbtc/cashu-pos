@@ -8,6 +8,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { usePaymentStore } from '../../src/store/payment.store';
 import { useConfigStore } from '../../src/store/config.store';
@@ -73,6 +74,11 @@ export default function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       {/* Refund Search Link */}
       <View style={styles.headerActions}>
         <Link href="/refund/search" asChild>
@@ -108,6 +114,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   headerActions: {
     padding: 16,
