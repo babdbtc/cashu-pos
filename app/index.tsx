@@ -13,9 +13,32 @@ import { useConfigStore } from '@/store/config.store';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { merchantName, terminalName, mints } = useConfigStore();
+  const { merchantName, terminalName, mints, currency } = useConfigStore();
 
   const hasMintConfigured = mints.trusted.length > 0;
+  const isBitcoinOnly = currency.priceDisplayMode === 'sats_only';
+
+  // TODO: Replace with actual data from payment store
+  const todayStats = {
+    sales: 1250.50,
+    transactions: 23,
+    satsReceived: 52500,
+  };
+
+  const weeklyStats = {
+    sales: 8450.75,
+    sats: 352500,
+    transactions: 142,
+    avgTransaction: 59.50,
+    avgSats: 2483,
+  };
+
+  const monthlyStats = {
+    sales: 32150.00,
+    sats: 1340000,
+    transactions: 587,
+    topProduct: 'Espresso',
+  };
 
   const handlePOS = () => {
     router.push('/pos');
@@ -35,59 +58,101 @@ export default function HomeScreen() {
 
   return (
     <Screen style={styles.screen}>
-      {/* Status Bar */}
-      <View style={styles.statusBar}>
+      {/* Compact Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.merchantName}>{merchantName}</Text>
+          <Text style={styles.terminalName}>{terminalName}</Text>
+        </View>
         <View style={styles.statusItem}>
           <StatusDot variant={hasMintConfigured ? 'success' : 'warning'} />
           <Text style={styles.statusText}>
-            {hasMintConfigured ? 'Ready' : 'Setup Required'}
+            {hasMintConfigured ? 'Ready' : 'Setup'}
           </Text>
         </View>
-        <Text style={styles.terminalName}>{terminalName}</Text>
       </View>
 
-      {/* Main Content */}
-      <View style={styles.content}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logo}>C</Text>
+      {/* Stats Section */}
+      <View style={styles.statsSection}>
+        <Text style={styles.todayLabel}>Today</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValueLarge}>
+              {isBitcoinOnly
+                ? `₿${todayStats.satsReceived.toLocaleString()}`
+                : `$${todayStats.sales.toFixed(2)}`}
+            </Text>
+            <Text style={styles.statLabelInline}>sales</Text>
+          </View>
+          <View style={styles.statSeparator} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValueMedium}>{todayStats.transactions}</Text>
+            <Text style={styles.statLabelInline}>transactions</Text>
+          </View>
+          {!isBitcoinOnly && (
+            <>
+              <View style={styles.statSeparator} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValueMedium}>₿{todayStats.satsReceived.toLocaleString()}</Text>
+                <Text style={styles.statLabelInline}>received</Text>
+              </View>
+            </>
+          )}
         </View>
-
-        <Text style={styles.title}>CashuPay</Text>
-        <Text style={styles.subtitle}>{merchantName}</Text>
-
-        <Text style={styles.readyText}>
-          {hasMintConfigured
-            ? 'Ready to accept payments'
-            : 'Configure a mint to start accepting payments'}
-        </Text>
       </View>
 
-      {/* Action Buttons */}
+      {/* Quick Actions */}
       <View style={styles.actions}>
-        <Button
-          title="Point of Sale"
+        <Pressable
+          style={styles.primaryAction}
           onPress={handlePOS}
-          variant="primary"
-          size="lg"
-          fullWidth
-        />
-
-        <Button
-          title="Quick Payment"
-          onPress={handleNewPayment}
-          variant="secondary"
-          size="lg"
-          fullWidth
-        />
+        >
+          <Text style={styles.primaryActionTitle}>Point of Sale</Text>
+          <Text style={styles.primaryActionSubtitle}>Full product catalog</Text>
+        </Pressable>
 
         <View style={styles.secondaryActions}>
-          <Pressable style={styles.secondaryButton} onPress={handleHistory}>
-            <Text style={styles.secondaryButtonText}>History</Text>
+          <Pressable style={styles.secondaryAction} onPress={handleNewPayment}>
+            <Text style={styles.secondaryActionTitle}>Quick Payment</Text>
           </Pressable>
 
-          <Pressable style={styles.secondaryButton} onPress={handleSettings}>
-            <Text style={styles.secondaryButtonText}>Settings</Text>
+          <Pressable style={styles.secondaryAction} onPress={handleHistory}>
+            <Text style={styles.secondaryActionTitle}>History</Text>
           </Pressable>
+
+          <Pressable style={styles.secondaryAction} onPress={handleSettings}>
+            <Text style={styles.secondaryActionTitle}>Settings</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Performance Overview */}
+      <View style={styles.summarySection}>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryColumn}>
+            <Text style={styles.summaryLabel}>Week</Text>
+            <Text style={styles.summaryValue}>
+              {isBitcoinOnly
+                ? `₿${weeklyStats.sats.toLocaleString()}`
+                : `$${weeklyStats.sales.toLocaleString()}`}
+            </Text>
+          </View>
+          <View style={styles.summaryColumn}>
+            <Text style={styles.summaryLabel}>Month</Text>
+            <Text style={styles.summaryValue}>
+              {isBitcoinOnly
+                ? `₿${monthlyStats.sats.toLocaleString()}`
+                : `$${monthlyStats.sales.toLocaleString()}`}
+            </Text>
+          </View>
+          <View style={styles.summaryColumn}>
+            <Text style={styles.summaryLabel}>Avg</Text>
+            <Text style={styles.summaryValue}>
+              {isBitcoinOnly
+                ? `₿${weeklyStats.avgSats.toLocaleString()}`
+                : `$${weeklyStats.avgTransaction.toFixed(0)}`}
+            </Text>
+          </View>
         </View>
       </View>
     </Screen>
@@ -99,11 +164,20 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.xl,
   },
-  statusBar: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    marginBottom: spacing.xxxl,
+  },
+  merchantName: {
+    ...typography.h3,
+    color: colors.text.primary,
+    marginBottom: 2,
+  },
+  terminalName: {
+    ...typography.bodySmall,
+    color: colors.text.muted,
   },
   statusItem: {
     flexDirection: 'row',
@@ -113,61 +187,108 @@ const styles = StyleSheet.create({
   statusText: {
     ...typography.bodySmall,
     color: colors.text.secondary,
+    fontWeight: '600',
   },
-  terminalName: {
+  statsSection: {
+    marginBottom: spacing.xxxl,
+  },
+  todayLabel: {
+    ...typography.caption,
+    color: colors.text.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    fontSize: 11,
+    marginBottom: spacing.md,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
+  },
+  statSeparator: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border.default,
+    marginHorizontal: spacing.md,
+  },
+  statValueLarge: {
+    ...typography.h1,
+    color: colors.text.primary,
+    fontSize: 36,
+  },
+  statValueMedium: {
+    ...typography.h2,
+    color: colors.text.primary,
+    fontSize: 28,
+  },
+  statLabelInline: {
     ...typography.bodySmall,
     color: colors.text.muted,
   },
-  content: {
+  actions: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: spacing.huge,
+    gap: spacing.md,
   },
-  logoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.accent.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xxl,
+  primaryAction: {
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 20,
   },
-  logo: {
-    fontSize: 64,
-    fontWeight: '700',
-    color: colors.text.inverse,
-  },
-  title: {
-    ...typography.h2,
+  primaryActionTitle: {
+    ...typography.h1,
+    color: colors.accent.primary,
+    fontSize: 32,
     marginBottom: spacing.xs,
   },
-  subtitle: {
-    ...typography.bodyLarge,
-    color: colors.text.secondary,
-    marginBottom: spacing.xxl,
-  },
-  readyText: {
+  primaryActionSubtitle: {
     ...typography.body,
-    color: colors.text.muted,
-    textAlign: 'center',
-  },
-  actions: {
-    gap: spacing.lg,
+    color: colors.text.secondary,
   },
   secondaryActions: {
     flexDirection: 'row',
     gap: spacing.md,
   },
-  secondaryButton: {
+  secondaryAction: {
     flex: 1,
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
     backgroundColor: colors.background.secondary,
-    borderRadius: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  secondaryButtonText: {
-    ...typography.button,
+  secondaryActionTitle: {
+    ...typography.h4,
     color: colors.text.primary,
+  },
+  summarySection: {
+    marginTop: 'auto',
+    paddingTop: spacing.xl,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: spacing.xxl,
+  },
+  summaryColumn: {
+    flex: 1,
+  },
+  summaryLabel: {
+    ...typography.caption,
+    color: colors.text.muted,
+    textTransform: 'uppercase',
+    fontSize: 10,
+    letterSpacing: 1.5,
+    marginBottom: spacing.xs,
+  },
+  summaryValue: {
+    ...typography.h3,
+    color: colors.text.secondary,
+    fontSize: 20,
   },
 });

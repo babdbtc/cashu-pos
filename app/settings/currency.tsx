@@ -25,11 +25,15 @@ export default function CurrencySettingsScreen() {
   const setPriceDisplayMode = useConfigStore((state) => state.setPriceDisplayMode);
   const setSatsDisplayFormat = useConfigStore((state) => state.setSatsDisplayFormat);
 
+  const isBitcoinOnly = currency.priceDisplayMode === 'sats_only';
+
   const handleCurrencySelect = useCallback(
     (currencyCode: string) => {
-      setDisplayCurrency(currencyCode);
+      if (!isBitcoinOnly) {
+        setDisplayCurrency(currencyCode);
+      }
     },
-    [setDisplayCurrency]
+    [setDisplayCurrency, isBitcoinOnly]
   );
 
 
@@ -79,7 +83,7 @@ export default function CurrencySettingsScreen() {
                 <Text style={[
                   styles.optionText,
                   currency.priceDisplayMode === 'sats_only' && styles.optionTextActive
-                ]}>Sats Only</Text>
+                ]}>Bitcoin-Only</Text>
               </Pressable>
             </View>
           </View>
@@ -118,7 +122,12 @@ export default function CurrencySettingsScreen() {
 
         {/* Currency Selection */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Display Currency</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Display Currency</Text>
+            {isBitcoinOnly && (
+              <Text style={styles.disabledHint}>Not available in Bitcoin-Only mode</Text>
+            )}
+          </View>
 
           {CURRENCIES.map((curr) => (
             <Pressable
@@ -126,15 +135,26 @@ export default function CurrencySettingsScreen() {
               style={[
                 styles.currencyItem,
                 currency.displayCurrency === curr.code && styles.currencyItemSelected,
+                isBitcoinOnly && styles.currencyItemDisabled,
               ]}
               onPress={() => handleCurrencySelect(curr.code)}
+              disabled={isBitcoinOnly}
             >
               <View style={styles.currencyInfo}>
-                <Text style={styles.currencyCode}>{curr.code}</Text>
-                <Text style={styles.currencyName}>{curr.name}</Text>
+                <Text style={[
+                  styles.currencyCode,
+                  isBitcoinOnly && styles.textDisabled,
+                ]}>{curr.code}</Text>
+                <Text style={[
+                  styles.currencyName,
+                  isBitcoinOnly && styles.textDisabled,
+                ]}>{curr.name}</Text>
               </View>
-              <Text style={styles.currencySymbol}>{curr.symbol}</Text>
-              {currency.displayCurrency === curr.code && (
+              <Text style={[
+                styles.currencySymbol,
+                isBitcoinOnly && styles.textDisabled,
+              ]}>{curr.symbol}</Text>
+              {currency.displayCurrency === curr.code && !isBitcoinOnly && (
                 <View style={styles.checkmark}>
                   <Text style={styles.checkmarkText}>✓</Text>
                 </View>
@@ -295,5 +315,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  sectionHeader: {
+    marginBottom: 16,
+  },
+  disabledHint: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  currencyItemDisabled: {
+    opacity: 0.4,
+    backgroundColor: '#1a1a2e',
+  },
+  textDisabled: {
+    color: '#555',
   },
 });
