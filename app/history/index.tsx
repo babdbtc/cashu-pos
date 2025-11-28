@@ -72,7 +72,7 @@ export default function HistoryScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Refund Search Link */}
       <View style={styles.headerActions}>
         <Link href="/refund/search" asChild>

@@ -32,29 +32,28 @@ The tradeoff is clear: Cashu sacrifices self-custody for better UX. For small-to
 
 ```
 cashu-pos/
-├── pos-terminal/               # Expo React Native POS app
-│   ├── app/                    # Screens (Expo Router)
-│   │   ├── index.tsx           # Home screen
-│   │   ├── amount.tsx          # Amount entry
-│   │   ├── payment.tsx         # NFC/Lightning payment
-│   │   ├── result.tsx          # Payment result
-│   │   ├── pos/                # POS catalog & checkout
-│   │   ├── admin/              # Admin dashboard
-│   │   ├── settings/           # Configuration screens
-│   │   ├── history/            # Transaction history
-│   │   └── refund/             # Refund processing
-│   └── src/
-│       ├── components/         # UI components
-│       ├── services/           # Business logic
-│       │   ├── cashu.service.ts
-│       │   ├── nfc.service.ts
-│       │   ├── payment-processor.service.ts
-│       │   ├── exchange-rate.service.ts
-│       │   ├── receipt.service.ts
-│       │   └── refund.service.ts
-│       ├── store/              # Zustand state management
-│       ├── types/              # TypeScript interfaces
-│       └── theme/              # Design tokens
+├── app/                    # Screens (Expo Router)
+│   ├── index.tsx           # Home screen
+│   ├── amount.tsx          # Amount entry
+│   ├── payment.tsx         # NFC/Lightning payment
+│   ├── result.tsx          # Payment result
+│   ├── pos/                # POS catalog & checkout
+│   ├── admin/              # Admin dashboard
+│   ├── settings/           # Configuration screens
+│   ├── history/            # Transaction history
+│   └── refund/             # Refund processing
+├── src/
+│   ├── components/         # UI components
+│   ├── services/           # Business logic
+│   │   ├── cashu.service.ts
+│   │   ├── nfc.service.ts
+│   │   ├── payment-processor.service.ts
+│   │   ├── exchange-rate.service.ts
+│   │   ├── receipt.service.ts
+│   │   └── refund.service.ts
+│   ├── store/              # Zustand state management
+│   ├── types/              # TypeScript interfaces
+│   └── theme/              # Design tokens
 ├── docs/                       # Technical documentation
 │   ├── 01-cashu-protocol.md
 │   ├── 02-nfc-payment-flow.md
@@ -79,7 +78,6 @@ git clone https://github.com/your-repo/cashupaysystem.git
 cd cashu-pos
 
 # Install dependencies
-cd pos-terminal
 npm install
 
 # Start the development server

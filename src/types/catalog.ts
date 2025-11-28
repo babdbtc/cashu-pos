@@ -3,7 +3,8 @@
 import type { CategoryRow, ProductRow, ProductVariantRow, ModifierGroupRow, ModifierRow } from './database';
 
 // Extended product with relations
-export interface Product extends ProductRow {
+export interface Product extends Omit<ProductRow, 'image_url'> {
+  image_url?: string | number | null;
   category?: Category | null;
   variants?: ProductVariant[];
   modifier_groups?: ProductModifierGroup[];
@@ -26,7 +27,7 @@ export interface ModifierGroup extends ModifierGroupRow {
 }
 
 // Modifier type alias
-export interface Modifier extends ModifierRow {}
+export interface Modifier extends ModifierRow { }
 
 // Product modifier group relation
 export interface ProductModifierGroup {
@@ -52,7 +53,7 @@ export interface ProductFormData {
   price: number;
   cost?: number;
   tax_rate: number;
-  image_url?: string;
+  image_url?: string | number | null;
   track_inventory: boolean;
   allow_backorder: boolean;
   has_variants: boolean;

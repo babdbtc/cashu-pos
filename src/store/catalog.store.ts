@@ -161,9 +161,9 @@ export const useCatalogStore = create<CatalogState>()(
             ...p,
             inventory: p.inventory?.[0]
               ? {
-                  ...p.inventory[0],
-                  status: computeInventoryStatus(p.inventory[0]),
-                }
+                ...p.inventory[0],
+                status: computeInventoryStatus(p.inventory[0]),
+              }
               : null,
           }));
 
@@ -524,15 +524,25 @@ export const useCatalogStore = create<CatalogState>()(
 
       // Local data management
       addLocalProduct: (product) => {
-        set((state) => ({
-          products: [...state.products, product],
-        }));
+        set((state) => {
+          if (state.products.some(p => p.id === product.id)) {
+            return state;
+          }
+          return {
+            products: [...state.products, product],
+          };
+        });
       },
 
       addLocalCategory: (category) => {
-        set((state) => ({
-          categories: [...state.categories, category],
-        }));
+        set((state) => {
+          if (state.categories.some(c => c.id === category.id)) {
+            return state;
+          }
+          return {
+            categories: [...state.categories, category],
+          };
+        });
       },
 
       setModifierGroups: (groups) => {

@@ -50,7 +50,7 @@ export default function SettingsScreen() {
     : 'Not configured';
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView style={styles.scrollView}>
         {/* Terminal Info */}
         <View style={styles.group}>

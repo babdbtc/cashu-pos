@@ -5,7 +5,7 @@
  * Optimized for tablet use.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,9 @@ import {
   FlatList,
   TextInput,
   useWindowDimensions,
+  Image,
+  PanResponder,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
@@ -84,11 +87,11 @@ function ProductCard({
       disabled={isOutOfStock && !product.allow_backorder}
     >
       {product.image_url ? (
-        <View style={styles.productImage}>
-          <Text style={styles.productImagePlaceholder}>
-            {product.name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
+        <Image
+          source={typeof product.image_url === 'string' ? { uri: product.image_url } : product.image_url}
+          style={styles.productImage}
+          resizeMode="cover"
+        />
       ) : (
         <View style={[styles.productImage, { backgroundColor: product.category?.color || '#2a2a3e' }]}>
           <Text style={styles.productImagePlaceholder}>
@@ -192,8 +195,28 @@ export default function POSScreen() {
   const isTablet = width >= 768;
 
   // Store data
-  const categories = useCatalogStore((s) => s.categories);
-  const products = useCatalogStore((s) => s.products);
+  const rawCategories = useCatalogStore((s) => s.categories);
+  const rawProducts = useCatalogStore((s) => s.products);
+
+  // Deduplicate data to prevent key errors if store is corrupted
+  const categories = useMemo(() => {
+    const seen = new Set();
+    return rawCategories.filter(c => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  }, [rawCategories]);
+
+  const products = useMemo(() => {
+    const seen = new Set();
+    return rawProducts.filter(p => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [rawProducts]);
+
   const activeCategoryId = useCatalogStore((s) => s.activeCategoryId);
   const setActiveCategory = useCatalogStore((s) => s.setActiveCategory);
   const getFilteredProducts = useCatalogStore((s) => s.getFilteredProducts);
@@ -218,6 +241,7 @@ export default function POSScreen() {
   const isSatsMain = currency.priceDisplayMode === 'sats_fiat' || currency.priceDisplayMode === 'sats_only';
 
   // Load sample data if store is empty
+  // Load sample data if store is empty or has stale images
   useEffect(() => {
     if (categories.length === 0 && products.length === 0) {
       // Load sample data for demo
@@ -228,12 +252,193 @@ export default function POSScreen() {
         useCatalogStore.getState().addLocalProduct(prod);
       });
       useCatalogStore.getState().setModifierGroups(sampleModifierGroups);
+    } else {
+      // Check for stale images in sample products (e.g. after code update)
+      const hasStaleImages = products.some(p => {
+        const sample = sampleProducts.find(sp => sp.id === p.id);
+        return sample && sample.image_url && !p.image_url;
+      });
+
+      if (hasStaleImages) {
+        console.log('Updating stale product images...');
+        sampleProducts.forEach((sp) => {
+          if (sp.image_url) {
+            useCatalogStore.getState().updateProduct(sp.id, { image_url: sp.image_url });
+          }
+        });
+      }
     }
-  }, [categories.length, products.length]);
+  }, [categories.length, products.length, products]);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
   const [showCart, setShowCart] = useState(isTablet);
+  const [isCartVisible, setIsCartVisible] = useState(isTablet); // Separate render state
+
+  // Animation for cart swipe gesture (mobile only)
+  const cartTranslateX = useRef(new Animated.Value(0)).current;
+  const cartOpacity = useRef(new Animated.Value(isTablet ? 1 : 0)).current;
+
+  // Animate cart in when opened via button
+  useEffect(() => {
+    if (!isTablet) {
+      if (showCart && !isCartVisible) {
+        // Open cart
+        setIsCartVisible(true);
+        cartTranslateX.setValue(400);
+        cartOpacity.setValue(0);
+        Animated.parallel([
+          Animated.spring(cartTranslateX, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 90,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cartOpacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      } else if (!showCart && isCartVisible) {
+        // Close cart (triggered externally)
+        Animated.parallel([
+          Animated.timing(cartTranslateX, {
+            toValue: 400,
+            duration: 250,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cartOpacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setIsCartVisible(false);
+          cartTranslateX.setValue(0);
+        });
+      }
+    }
+  }, [showCart, isTablet, isCartVisible, cartTranslateX, cartOpacity]);
+
+  // Pan responder for cart swipe to close (mobile only)
+  const cartPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Only respond to horizontal swipes on mobile
+        if (isTablet) return false;
+        return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Only allow swiping to the right (closing)
+        if (gestureState.dx > 0) {
+          cartTranslateX.setValue(gestureState.dx);
+          // Fade out as user drags
+          const opacity = Math.max(0, 1 - gestureState.dx / 400);
+          cartOpacity.setValue(opacity);
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dx > 100 || gestureState.vx > 0.5) {
+          // Swipe threshold reached - close cart with smooth animation
+          Animated.parallel([
+            Animated.timing(cartTranslateX, {
+              toValue: 400,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+            Animated.timing(cartOpacity, {
+              toValue: 0,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setIsCartVisible(false);
+            setShowCart(false);
+            cartTranslateX.setValue(0);
+          });
+        } else {
+          // Snap back
+          Animated.parallel([
+            Animated.spring(cartTranslateX, {
+              toValue: 0,
+              damping: 20,
+              stiffness: 90,
+              useNativeDriver: true,
+            }),
+            Animated.timing(cartOpacity, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
+      },
+    })
+  ).current;
+
+  // Pan responder for edge swipe to open cart (mobile only)
+  const edgePanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Only respond on mobile, when cart is closed, and swipe starts from right edge
+        if (isTablet || showCart) return false;
+        // Larger edge zone (100px from right edge)
+        const isFromRightEdge = evt.nativeEvent.pageX > width - 100;
+        return isFromRightEdge && gestureState.dx < -5;
+      },
+      onPanResponderGrant: () => {
+        // Show cart immediately when gesture starts
+        setIsCartVisible(true);
+        cartTranslateX.setValue(400);
+        cartOpacity.setValue(0);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Follow finger - show cart sliding in from right
+        const translateValue = Math.max(0, 400 + gestureState.dx);
+        cartTranslateX.setValue(translateValue);
+        // Fade in as user drags
+        const opacity = Math.min(1, Math.max(0, -gestureState.dx / 200));
+        cartOpacity.setValue(opacity);
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dx < -80 || gestureState.vx < -0.3) {
+          // Swipe threshold reached - open cart fully
+          setShowCart(true);
+          Animated.parallel([
+            Animated.spring(cartTranslateX, {
+              toValue: 0,
+              damping: 20,
+              stiffness: 90,
+              useNativeDriver: true,
+            }),
+            Animated.timing(cartOpacity, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        } else {
+          // Snap back - close cart
+          Animated.parallel([
+            Animated.timing(cartTranslateX, {
+              toValue: 400,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(cartOpacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setIsCartVisible(false);
+            cartTranslateX.setValue(0);
+          });
+        }
+      },
+    })
+  ).current;
 
   // Filter products by search and category
   const filteredProducts = useMemo(() => {
@@ -280,6 +485,12 @@ export default function POSScreen() {
   // Number of columns based on screen width
   // Tablet vertical (portrait) usually has width < height, but isTablet is based on screen size
   // We want 3 columns on tablet when cart is shown, even in vertical mode if space permits
+  // On phone, cart is an overlay so always use full width
+  const cartWidth = 340; // Width of cart section + borders
+  const availableWidth = isTablet && showCart
+    ? width - cartWidth
+    : width;
+
   const numColumns = isTablet ? (showCart ? 3 : 4) : 2;
 
   return (
@@ -292,7 +503,7 @@ export default function POSScreen() {
               <Text style={styles.backButtonText}>{'<'}</Text>
             </Pressable>
           </Link>
-          <Text style={styles.headerTitle}>{merchantName}</Text>
+          {isTablet && <Text style={styles.headerTitle}>{merchantName}</Text>}
         </View>
 
         <View style={styles.headerRight}>
@@ -319,10 +530,31 @@ export default function POSScreen() {
               )}
             </Pressable>
           )}
+
+          {isTablet && (
+            <Pressable
+              style={[styles.cartToggle, { backgroundColor: '#ef4444', marginLeft: 8 }]}
+              onPress={() => {
+                // Clear data and reload
+                useCatalogStore.getState().clearLocalData();
+                setTimeout(() => {
+                  sampleCategories.forEach((cat) => {
+                    useCatalogStore.getState().addLocalCategory(cat);
+                  });
+                  sampleProducts.forEach((prod) => {
+                    useCatalogStore.getState().addLocalProduct(prod);
+                  });
+                  useCatalogStore.getState().setModifierGroups(sampleModifierGroups);
+                }, 50);
+              }}
+            >
+              <Text style={styles.cartToggleText}>Reset</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
-      <View style={styles.mainContent}>
+      <View style={styles.mainContent} {...(!isTablet ? edgePanResponder.panHandlers : {})}>
         {/* Left side: Categories + Products */}
         <View style={[styles.catalogSection, showCart && isTablet && styles.catalogSectionWithCart]}>
           {/* Categories */}
@@ -352,13 +584,12 @@ export default function POSScreen() {
             <View style={styles.productsRow}>
               {filteredProducts.map((item) => {
                 // Calculate width dynamically based on available space
-                // Tablet with cart: (Total Width - Cart Width - Padding) / 3 columns
-                // We need to ensure we subtract enough for the cart (320px) and margins
-                const cardWidth = isTablet
-                  ? (showCart
-                    ? (width - 340) / 3 - 12 // Increased subtraction to account for cart + padding
-                    : width / 4 - 12)
-                  : width / 2 - 12;
+                // Account for: row padding (12px total), card margins (12px per card)
+                const rowPadding = 12; // 6px on each side
+                const cardMargin = 12; // 6px on each side
+                const cols = numColumns;
+                const cardWidth = (availableWidth - rowPadding - (cols * cardMargin)) / cols;
+
                 return (
                   <View key={item.id} style={[styles.productCardWrapper, { width: cardWidth }]}>
                     <ProductCard product={item} onPress={() => handleProductPress(item)} />
@@ -377,10 +608,22 @@ export default function POSScreen() {
         </View>
 
         {/* Right side: Cart (visible on tablet or toggled on phone) */}
-        {(showCart || isTablet) && (
-          <View style={[styles.cartSection, !isTablet && styles.cartSectionMobile]}>
+        {(isCartVisible || isTablet) && (
+          <Animated.View
+            style={[
+              styles.cartSection,
+              !isTablet && styles.cartSectionMobile,
+              !isTablet && {
+                transform: [{ translateX: cartTranslateX }],
+                opacity: cartOpacity,
+              },
+            ]}
+            {...(!isTablet ? cartPanResponder.panHandlers : {})}
+          >
             <View style={styles.cartHeader}>
-              <Text style={styles.cartTitle}>Current Order</Text>
+              <Text style={styles.cartTitle} numberOfLines={1}>
+                Current Order
+              </Text>
               {cart.items.length > 0 && (
                 <Pressable onPress={clearCart}>
                   <Text style={styles.clearCartText}>Clear</Text>
@@ -490,7 +733,7 @@ export default function POSScreen() {
                 <Text style={styles.closeCartText}>Close</Text>
               </Pressable>
             )}
-          </View>
+          </Animated.View>
         )}
       </View>
     </SafeAreaView>
@@ -537,9 +780,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1, // Allow right side to take available space
+    justifyContent: 'flex-end',
   },
   searchContainer: {
-    width: 200,
+    width: '100%', // Take available space
+    maxWidth: 200, // But not more than 200
+    flex: 1, // Allow shrinking
   },
   searchInput: {
     backgroundColor: '#1a1a2e',
@@ -632,7 +879,7 @@ const styles = StyleSheet.create({
   },
   productCardWrapper: {
     margin: 6,
-    height: 200,
+    height: 180, // Reduced from 210
   },
   productCard: {
     flex: 1,
@@ -644,7 +891,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   productImage: {
-    height: 100,
+    height: 110,
+    width: '100%',
     backgroundColor: '#2a2a3e',
     justifyContent: 'center',
     alignItems: 'center',
@@ -655,21 +903,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   productInfo: {
-    padding: 12,
-    paddingBottom: 12,
+    padding: 8,
+    paddingBottom: 12, // Increased to lift price up
     flex: 1,
     justifyContent: 'space-between',
   },
   productName: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   productPriceContainer: {
     alignItems: 'flex-end',
     flexDirection: 'column-reverse',
-    marginBottom: 6,
+    marginBottom: 4, // Increased slightly
   },
   productPrice: {
     color: '#4ade80',

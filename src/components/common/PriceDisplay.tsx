@@ -105,14 +105,13 @@ const styles = StyleSheet.create({
     },
     row: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
+        alignItems: 'baseline',
     },
     // Large (Main)
     symbolLarge: {
         fontSize: 32,
         fontWeight: '600',
         color: colors.text.secondary,
-        marginTop: 12,
         marginRight: 4,
     },
     amountLarge: {
@@ -132,7 +131,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: colors.text.secondary,
-        marginTop: 4,
         marginRight: 2,
     },
     amount: {
@@ -150,7 +148,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
         color: colors.text.muted,
-        marginTop: 2,
         marginRight: 2,
     },
     amountSmall: {

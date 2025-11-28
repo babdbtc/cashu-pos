@@ -71,7 +71,7 @@ export const sampleProducts: Product[] = [
     price: 300, // $3.00
     cost: 50,
     tax_rate: 8.25,
-    image_url: null,
+    image_url: require('../../assets/products/espresso.png'),
     track_inventory: false,
     allow_backorder: true,
     has_variants: false,
@@ -92,7 +92,7 @@ export const sampleProducts: Product[] = [
     price: 450, // $4.50
     cost: 80,
     tax_rate: 8.25,
-    image_url: null,
+    image_url: require('../../assets/products/cappuccino.png'),
     track_inventory: false,
     allow_backorder: true,
     has_variants: true,
@@ -154,7 +154,7 @@ export const sampleProducts: Product[] = [
     price: 475, // $4.75
     cost: 85,
     tax_rate: 8.25,
-    image_url: null,
+    image_url: require('../../assets/products/latte.png'),
     track_inventory: false,
     allow_backorder: true,
     has_variants: false,
@@ -219,7 +219,7 @@ export const sampleProducts: Product[] = [
     price: 525, // $5.25
     cost: 90,
     tax_rate: 8.25,
-    image_url: null,
+    image_url: require('../../assets/products/iced-latte.png'),
     track_inventory: false,
     allow_backorder: true,
     has_variants: false,
@@ -284,7 +284,7 @@ export const sampleProducts: Product[] = [
     price: 350, // $3.50
     cost: 100,
     tax_rate: 8.25,
-    image_url: null,
+    image_url: require('../../assets/products/croissant.png'),
     track_inventory: true,
     allow_backorder: false,
     has_variants: false,
@@ -415,7 +415,7 @@ export const sampleProducts: Product[] = [
     price: 1800, // $18.00
     cost: 700,
     tax_rate: 0,
-    image_url: null,
+    image_url: require('../../assets/products/coffee-beans.png'),
     track_inventory: true,
     allow_backorder: true,
     has_variants: false,

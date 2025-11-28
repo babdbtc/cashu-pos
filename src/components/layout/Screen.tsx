@@ -19,7 +19,7 @@ export function Screen({
   children,
   style,
   scrollable = false,
-  edges = ['bottom'],
+  edges = ['top', 'bottom'],
 }: ScreenProps) {
   const content = scrollable ? (
     <ScrollView style={styles.scrollView} contentContainerStyle={style}>
