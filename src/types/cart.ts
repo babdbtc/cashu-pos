@@ -58,6 +58,10 @@ export interface Cart {
   orderType: OrderType;
   customerId?: string;
   customerName?: string;
+  tableId?: string;                     // Table ID for dine-in orders
+  tableName?: string;                   // Table display name (e.g., "A1", "Table 5")
+  areaId?: string;                      // Area/section ID for organization
+  areaName?: string;                    // Area display name (e.g., "Patio", "Main Dining")
   notes?: string;
   tipAmount: number;
   tipPercentage?: number;               // If tip was percentage-based

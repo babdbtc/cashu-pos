@@ -12,6 +12,7 @@ import { StatusDot } from '@/components/ui';
 import { GlassCard } from '@/components/ui/GlassView';
 import { colors, spacing, typography } from '@/theme';
 import { useConfigStore } from '@/store/config.store';
+import { useSeedStore } from '@/store/seed.store';
 import { usePaymentStats } from '@/hooks/usePaymentStats';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,30 +20,41 @@ import { Ionicons } from '@expo/vector-icons';
 export default function HomeScreen() {
   const router = useRouter();
   const { merchantName, terminalName, mints, currency, hasCompletedOnboarding, syncEnabled } = useConfigStore();
+  const { isWalletInitialized, checkWalletStatus } = useSeedStore();
   const { width } = useWindowDimensions();
   const stats = usePaymentStats();
   const [showStoreStats, setShowStoreStats] = useState(false);
+  const [isCheckingWallet, setIsCheckingWallet] = useState(true);
 
   // Current stats based on toggle (device or store-wide)
   const currentStats = showStoreStats ? stats.store : stats.device;
 
-  // Check if onboarding has been completed
+  // Check wallet status on mount
   useEffect(() => {
+    checkWalletStatus().finally(() => setIsCheckingWallet(false));
+  }, []);
+
+  // Check if onboarding and wallet setup have been completed
+  useEffect(() => {
+    if (isCheckingWallet) return;
+
     const timer = setTimeout(() => {
       if (!hasCompletedOnboarding) {
         router.replace('/onboarding');
+      } else if (!isWalletInitialized) {
+        router.push('/wallet/setup');
       }
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [hasCompletedOnboarding, router]);
+  }, [hasCompletedOnboarding, isWalletInitialized, isCheckingWallet, router]);
 
   const hasMintConfigured = mints.trusted.length > 0;
   const isBitcoinOnly = currency.priceDisplayMode === 'sats_only';
   const isPhone = width < 768;
 
-  // Show loading while checking onboarding status
-  if (!hasCompletedOnboarding) {
+  // Show loading while checking onboarding and wallet status
+  if (!hasCompletedOnboarding || isCheckingWallet) {
     return null;
   }
 
@@ -210,6 +222,24 @@ export default function HomeScreen() {
             <GlassCard style={styles.actionCard}>
               <Ionicons name="return-down-back-outline" size={28} color={colors.text.primary} />
               <Text style={styles.actionLabel}>Refund</Text>
+            </GlassCard>
+          </Pressable>
+        </View>
+
+        {/* Restaurant Actions */}
+        <Text style={styles.sectionTitle}>Restaurant</Text>
+        <View style={styles.actionsGrid}>
+          <Pressable style={styles.actionButton} onPress={() => router.push('/tables')}>
+            <GlassCard style={styles.actionCard}>
+              <Ionicons name="restaurant-outline" size={28} color={colors.text.primary} />
+              <Text style={styles.actionLabel}>Floor Plan</Text>
+            </GlassCard>
+          </Pressable>
+
+          <Pressable style={styles.actionButton} onPress={() => router.push('/waiter')}>
+            <GlassCard style={styles.actionCard}>
+              <Ionicons name="person-outline" size={28} color={colors.text.primary} />
+              <Text style={styles.actionLabel}>Waiter View</Text>
             </GlassCard>
           </Pressable>
         </View>

@@ -62,6 +62,10 @@ interface CartState {
   clearCustomer: () => void;
   setNotes: (notes: string) => void;
 
+  // Actions - Table management
+  setTable: (tableId: string, tableName: string, areaId?: string, areaName?: string) => void;
+  clearTable: () => void;
+
   // Actions - Tax configuration
   setTaxConfig: (config: { enabled: boolean; inclusive: boolean; defaultRate: number }) => void;
 
@@ -437,6 +441,34 @@ export const useCartStore = create<CartState>()(
           cart: {
             ...state.cart,
             notes,
+            updatedAt: new Date(),
+          },
+        }));
+      },
+
+      // Set table
+      setTable: (tableId, tableName, areaId, areaName) => {
+        set((state) => ({
+          cart: {
+            ...state.cart,
+            tableId,
+            tableName,
+            areaId,
+            areaName,
+            updatedAt: new Date(),
+          },
+        }));
+      },
+
+      // Clear table
+      clearTable: () => {
+        set((state) => ({
+          cart: {
+            ...state.cart,
+            tableId: undefined,
+            tableName: undefined,
+            areaId: undefined,
+            areaName: undefined,
             updatedAt: new Date(),
           },
         }));

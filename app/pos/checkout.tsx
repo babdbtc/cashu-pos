@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
-import { useCartStore, useConfigStore, usePaymentStore } from '@/store';
+import { useCartStore, useConfigStore, usePaymentStore, useTableStore } from '@/store';
 import { DEFAULT_TIP_PRESETS } from '@/types/cart';
 import type { OrderType } from '@/types/cart';
 import {
@@ -28,6 +28,7 @@ import {
 import { PriceDisplay } from '@/components/common/PriceDisplay';
 import { getCurrencySymbol } from '@/constants/currencies';
 import { useToast } from '@/hooks/useToast';
+import { Ionicons } from '@expo/vector-icons';
 
 // Format price from cents to display string
 function formatPrice(cents: number): string {
@@ -52,7 +53,13 @@ export default function CheckoutScreen() {
   const clearTip = useCartStore((s) => s.clearTip);
   const setOrderType = useCartStore((s) => s.setOrderType);
   const setNotes = useCartStore((s) => s.setNotes);
+  const setTable = useCartStore((s) => s.setTable);
+  const clearTable = useCartStore((s) => s.clearTable);
   const clearCart = useCartStore((s) => s.clearCart);
+
+  // Table state
+  const tables = useTableStore((s) => s.tables);
+  const areas = useTableStore((s) => s.areas);
 
   // Config
   const tipsEnabled = useConfigStore((s) => s.currency); // TODO: Use actual tips config
@@ -107,8 +114,24 @@ export default function CheckoutScreen() {
   const handleOrderType = useCallback(
     (type: OrderType) => {
       setOrderType(type);
+      // Clear table if switching away from dine-in
+      if (type !== 'dine_in') {
+        clearTable();
+      }
     },
-    [setOrderType]
+    [setOrderType, clearTable]
+  );
+
+  // Handle table selection
+  const handleTableSelect = useCallback(
+    (tableId: string) => {
+      const table = tables.find((t) => t.id === tableId);
+      if (table) {
+        const area = areas.find((a) => a.id === table.area_id);
+        setTable(tableId, table.number, table.area_id || undefined, area?.name);
+      }
+    },
+    [tables, areas, setTable]
   );
 
   // Handle proceed to payment
@@ -197,6 +220,67 @@ export default function CheckoutScreen() {
             ))}
           </View>
         </View>
+
+        {/* Table Selection (Dine In Only) */}
+        {cart.orderType === 'dine_in' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Select Table</Text>
+            {cart.tableName ? (
+              <View style={styles.selectedTableCard}>
+                <View style={styles.selectedTableInfo}>
+                  <Ionicons name="restaurant" size={24} color="#4ade80" />
+                  <View style={styles.selectedTableText}>
+                    <Text style={styles.selectedTableName}>Table {cart.tableName}</Text>
+                    {cart.areaName && (
+                      <Text style={styles.selectedTableArea}>{cart.areaName}</Text>
+                    )}
+                  </View>
+                </View>
+                <Pressable onPress={() => clearTable()} style={styles.clearTableButton}>
+                  <Ionicons name="close-circle" size={24} color="#888" />
+                </Pressable>
+              </View>
+            ) : (
+              <View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {tables.filter((t) => t.active && t.status === 'available').length === 0 ? (
+                    <Text style={styles.noTablesText}>No tables available</Text>
+                  ) : (
+                    tables
+                      .filter((t) => t.active && t.status === 'available')
+                      .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
+                      .map((table) => {
+                        const area = areas.find((a) => a.id === table.area_id);
+                        return (
+                          <Pressable
+                            key={table.id}
+                            style={styles.tableOption}
+                            onPress={() => handleTableSelect(table.id)}
+                          >
+                            <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
+                            <Text style={styles.tableOptionNumber}>{table.number}</Text>
+                            {area && (
+                              <Text style={styles.tableOptionArea}>{area.name}</Text>
+                            )}
+                            <View style={styles.tableOptionCapacity}>
+                              <Ionicons name="people-outline" size={14} color="#888" />
+                              <Text style={styles.tableOptionCapacityText}>{table.capacity}</Text>
+                            </View>
+                          </Pressable>
+                        );
+                      })
+                  )}
+                </ScrollView>
+                <Pressable
+                  style={styles.manageTablesLink}
+                  onPress={() => router.push('/settings/tables')}
+                >
+                  <Text style={styles.manageTablesLinkText}>Manage Tables</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Order Summary */}
         <View style={styles.section}>
@@ -621,5 +705,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     opacity: 0.8,
+  },
+  // Table Selection Styles
+  selectedTableCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#4ade80',
+  },
+  selectedTableInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectedTableText: {
+    gap: 4,
+  },
+  selectedTableName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectedTableArea: {
+    color: '#888',
+    fontSize: 13,
+  },
+  clearTableButton: {
+    padding: 4,
+  },
+  tableOption: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    minWidth: 120,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#2a2a3e',
+  },
+  tableOptionNumber: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  tableOptionArea: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  tableOptionCapacity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+  },
+  tableOptionCapacityText: {
+    color: '#888',
+    fontSize: 12,
+  },
+  noTablesText: {
+    color: '#888',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  manageTablesLink: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  manageTablesLinkText: {
+    color: '#4ade80',
+    fontSize: 14,
   },
 });

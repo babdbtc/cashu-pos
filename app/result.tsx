@@ -16,17 +16,21 @@ import { getCurrencySymbol } from '@/constants/currencies';
 import { usePaymentStore } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
 import { useCartStore } from '@/store/cart.store';
+import { useStaffStore } from '@/store/staff.store';
 import { receiptService } from '@/services/receipt.service';
+import { orderService } from '@/services/order.service';
 import { useToast } from '@/hooks/useToast';
 
 export default function ResultScreen() {
   const router = useRouter();
   const { currentPayment, clearCurrentPayment } = usePaymentStore();
   const { merchantName, terminalName, terminalId } = useConfigStore();
-  const { clearCart } = useCartStore();
+  const { cart, clearCart } = useCartStore();
+  const { getCurrentStaff } = useStaffStore();
   const { showSuccess, showError } = useToast();
 
   const [isPrinting, setIsPrinting] = useState(false);
+  const [orderSaved, setOrderSaved] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -46,8 +50,27 @@ export default function ResultScreen() {
     // Play haptic feedback
     if (isSuccess) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Clear cart after successful payment
-      clearCart();
+
+      // Save order to database (only once)
+      if (!orderSaved && cart.items.length > 0) {
+        const currentStaff = getCurrentStaff();
+        orderService.createOrder({
+          cart,
+          payment: currentPayment,
+          merchantId: merchantName || 'local',
+          terminalId: terminalId || 'local',
+          staffId: currentStaff?.id,
+        }).then((orderId) => {
+          console.log('[Result] Order saved:', orderId);
+          setOrderSaved(true);
+          // Clear cart after successful order save
+          clearCart();
+        }).catch((error) => {
+          console.error('[Result] Failed to save order:', error);
+          // Still clear cart even if save fails
+          clearCart();
+        });
+      }
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
@@ -67,7 +90,7 @@ export default function ResultScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [currentPayment, isSuccess, clearCart]);
+  }, [currentPayment, isSuccess, cart, orderSaved, merchantName, terminalId, getCurrentStaff, clearCart]);
 
   const handleDone = () => {
     clearCurrentPayment();

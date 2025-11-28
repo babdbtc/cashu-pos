@@ -52,7 +52,7 @@ export interface Database {
           name: string;
           email: string | null;
           pin_hash: string | null;
-          role: 'owner' | 'manager' | 'cashier' | 'kitchen';
+          role: 'owner' | 'manager' | 'cashier' | 'kitchen' | 'waiter';
           permissions: string[];
           active: boolean;
           created_at: string;
@@ -200,6 +200,8 @@ export interface Database {
           terminal_id: string | null;
           staff_id: string | null;
           customer_id: string | null;
+          table_id: string | null;
+          area_id: string | null;
           order_number: string;
           status: 'draft' | 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
           order_type: 'dine_in' | 'takeout' | 'delivery';
@@ -326,6 +328,54 @@ export interface Database {
         Insert: Omit<Database['public']['Tables']['discounts']['Row'], 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Database['public']['Tables']['discounts']['Insert']>;
       };
+      table_areas: {
+        Row: {
+          id: string;
+          store_id: string;
+          name: string;
+          description: string | null;
+          color: string | null;
+          sort_order: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['table_areas']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['table_areas']['Insert']>;
+      };
+      tables: {
+        Row: {
+          id: string;
+          store_id: string;
+          area_id: string | null;
+          number: string;
+          capacity: number;
+          status: 'available' | 'occupied' | 'reserved' | 'cleaning' | 'unavailable';
+          position: Json | null;
+          shape: 'square' | 'round' | 'rectangle' | 'custom';
+          metadata: Json;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['tables']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['tables']['Insert']>;
+      };
+      table_assignments: {
+        Row: {
+          id: string;
+          table_id: string;
+          staff_id: string;
+          assigned_at: string;
+          assigned_by: string | null;
+          active: boolean;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['table_assignments']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['table_assignments']['Insert']>;
+      };
     };
     Views: {};
     Functions: {};
@@ -382,6 +432,7 @@ export interface TerminalSettings {
 export type Tables = Database['public']['Tables'];
 export type StoreRow = Tables['stores']['Row'];
 export type TerminalRow = Tables['terminals']['Row'];
+export type StaffRow = Tables['staff']['Row'];
 export type CategoryRow = Tables['categories']['Row'];
 export type ProductRow = Tables['products']['Row'];
 export type ProductVariantRow = Tables['product_variants']['Row'];
@@ -393,3 +444,6 @@ export type OrderItemRow = Tables['order_items']['Row'];
 export type PaymentRow = Tables['payments']['Row'];
 export type CustomerRow = Tables['customers']['Row'];
 export type DiscountRow = Tables['discounts']['Row'];
+export type TableAreaRow = Tables['table_areas']['Row'];
+export type TableRow = Tables['tables']['Row'];
+export type TableAssignmentRow = Tables['table_assignments']['Row'];

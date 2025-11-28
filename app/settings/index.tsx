@@ -147,6 +147,17 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* Restaurant Management */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Restaurant</Text>
+
+          <SettingsSection
+            title="Tables & Areas"
+            description="Manage dining tables and floor sections"
+            href="/settings/tables"
+          />
+        </View>
+
         {/* Mint Configuration */}
         <View style={styles.group}>
           <Text style={styles.groupTitle}>Mint</Text>
@@ -194,6 +205,23 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* Wallet */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Wallet</Text>
+
+          <SettingsSection
+            title="Backup Wallet"
+            description="View and backup your recovery phrase"
+            href="/wallet/backup"
+          />
+
+          <SettingsSection
+            title="Restore Wallet"
+            description="Restore wallet from recovery phrase"
+            href="/wallet/restore"
+          />
+        </View>
+
         {/* Staff & Security */}
         <View style={styles.group}>
           <Text style={styles.groupTitle}>Staff & Security</Text>
@@ -219,6 +247,17 @@ export default function SettingsScreen() {
             restricted={isSubTerminal}
           />
 
+        </View>
+
+        {/* Developer Tools */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Developer</Text>
+
+          <SettingsSection
+            title="Developer Tools"
+            description="Load sample data and testing utilities"
+            href="/settings/developer"
+          />
         </View>
 
         {/* About */}
