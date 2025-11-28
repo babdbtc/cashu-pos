@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import QRCode from 'react-native-qrcode-svg';
@@ -64,6 +64,19 @@ export default function PaymentScreen() {
   // Rate lock expiry state
   const [showRateExpiry, setShowRateExpiry] = useState(false);
 
+  // Payment processing flag - prevents double processing when both methods are active
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Tablet detection
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600; // Tablets typically have smallest dimension >= 600dp
+  const isDualScreenMode = isTablet; // Enable dual screen on all tablets
+
+  // Debug logging
+  useEffect(() => {
+    console.log(`[Payment Screen] Dimensions: ${width}x${height}, isTablet: ${isTablet}, isDualScreenMode: ${isDualScreenMode}`);
+  }, [width, height, isTablet, isDualScreenMode]);
+
   // Redirect if no payment (must be in useEffect, not during render)
   useEffect(() => {
     if (!currentPayment) {
@@ -71,11 +84,13 @@ export default function PaymentScreen() {
     }
   }, [currentPayment, router]);
 
-  // Start NFC listening when in Cashu mode (and not showing scanner)
+  // Start NFC listening when in Cashu mode or dual screen mode (and not showing scanner)
   useEffect(() => {
-    if (paymentMethod === 'cashu' && !isListening && !showScanner) {
+    const shouldListenNFC = (paymentMethod === 'cashu' || isDualScreenMode) && !showScanner;
+
+    if (shouldListenNFC && !isListening) {
       startNFCListening();
-    } else if (paymentMethod !== 'cashu' || showScanner) {
+    } else if (!shouldListenNFC && isListening) {
       // Stop NFC if switching away or showing scanner
       nfcService.cancelReading().catch(() => { });
       setIsListening(false);
@@ -84,11 +99,13 @@ export default function PaymentScreen() {
     return () => {
       nfcService.cancelReading().catch(() => { });
     };
-  }, [paymentMethod, showScanner]);
+  }, [paymentMethod, showScanner, isDualScreenMode]);
 
   // Handle Lightning Invoice Generation
   useEffect(() => {
-    if (paymentMethod === 'lightning' && currentPayment && !lightningInvoice && !isGeneratingInvoice) {
+    const shouldGenerateInvoice = (paymentMethod === 'lightning' || isDualScreenMode) && currentPayment && !lightningInvoice && !isGeneratingInvoice;
+
+    if (shouldGenerateInvoice) {
       generateInvoice();
     }
 
@@ -99,18 +116,20 @@ export default function PaymentScreen() {
         setPollingInterval(null);
       }
     };
-  }, [paymentMethod, currentPayment]);
+  }, [paymentMethod, currentPayment, isDualScreenMode]);
 
   // Poll for Lightning payment
   useEffect(() => {
-    if (paymentMethod === 'lightning' && lightningInvoice && !lightningInvoice.paid && !pollingInterval) {
+    const shouldPoll = (paymentMethod === 'lightning' || isDualScreenMode) && lightningInvoice && !lightningInvoice.paid && !pollingInterval;
+
+    if (shouldPoll) {
       const interval = setInterval(async () => {
         try {
-          if (!primaryMintUrl) return;
+          if (!primaryMintUrl || isProcessingPayment) return;
 
           const status = await checkMintQuote(primaryMintUrl, lightningInvoice.quote);
 
-          if (status.paid) {
+          if (status.paid && !isProcessingPayment) {
             setLightningPaid();
             clearInterval(interval);
             setPollingInterval(null);
@@ -123,7 +142,7 @@ export default function PaymentScreen() {
 
       setPollingInterval(interval);
     }
-  }, [paymentMethod, lightningInvoice, pollingInterval, primaryMintUrl]);
+  }, [paymentMethod, lightningInvoice, pollingInterval, primaryMintUrl, isDualScreenMode, isProcessingPayment]);
 
   const generateInvoice = async () => {
     if (!primaryMintUrl || !currentPayment) {
@@ -150,6 +169,14 @@ export default function PaymentScreen() {
   };
 
   const handleLightningSuccess = async (quoteId: string) => {
+    // First-payment-wins: prevent double processing
+    if (isProcessingPayment) {
+      console.log('[Payment] Already processing another payment, ignoring Lightning payment');
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       updatePaymentState('processing');
@@ -225,6 +252,14 @@ export default function PaymentScreen() {
   };
 
   const handleTokenReceived = async (tokenString: string) => {
+    // First-payment-wins: prevent double processing
+    if (isProcessingPayment) {
+      console.log('[Payment] Already processing another payment, ignoring Cashu payment');
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     updatePaymentState('validating');
 
@@ -525,111 +560,187 @@ export default function PaymentScreen() {
       </View>
 
       {/* Payment Area */}
-      <View style={styles.paymentArea}>
-        {paymentMethod === 'cashu' ? (
-          <View style={styles.nfcContainer}>
-            <PaymentStateIndicator state={currentPayment.state} />
-
-            {/* QR Scan Option */}
-            <View style={styles.orDivider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.orText}>or</Text>
-              <View style={styles.dividerLine} />
+      {isDualScreenMode ? (
+        /* Dual Screen Mode - Show both Cashu and Lightning side-by-side */
+        <View style={styles.dualScreenContainer}>
+          {/* Cashu Side */}
+          <View style={styles.dualScreenPanel}>
+            <View style={styles.panelHeader}>
+              <Text style={styles.panelTitle}>Cashu</Text>
             </View>
+            <View style={styles.panelContent}>
+              <PaymentStateIndicator state={currentPayment.state} />
 
-            <Button
-              title="Scan QR Code"
-              onPress={handleScanQR}
-              variant="secondary"
-              size="md"
-            />
-            <Text style={styles.qrHintText}>
-              Scan customer's Cashu token QR
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.lightningContainer}>
-            {isGeneratingInvoice ? (
-              <View style={styles.qrPlaceholder}>
-                <ActivityIndicator size="large" color={colors.accent.primary} />
-                <Text style={styles.qrSubtext}>Generating Invoice...</Text>
+              <View style={styles.orDivider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.orText}>or</Text>
+                <View style={styles.dividerLine} />
               </View>
-            ) : lightningInvoice ? (
-              <View style={styles.qrContainer}>
-                <View style={styles.qrWrapper}>
-                  <QRCode
-                    value={lightningInvoice.bolt11}
-                    size={200}
-                    color="black"
-                    backgroundColor="white"
-                  />
+
+              <Button
+                title="Scan QR Code"
+                onPress={handleScanQR}
+                variant="secondary"
+                size="md"
+              />
+              <Text style={styles.qrHintText}>
+                Scan customer's token QR
+              </Text>
+            </View>
+          </View>
+
+          {/* Divider */}
+          <View style={styles.dualScreenDivider} />
+
+          {/* Lightning Side */}
+          <View style={styles.dualScreenPanel}>
+            <View style={styles.panelHeader}>
+              <Text style={styles.panelTitle}>Lightning</Text>
+            </View>
+            <View style={styles.panelContent}>
+              {isGeneratingInvoice ? (
+                <View style={styles.qrPlaceholder}>
+                  <ActivityIndicator size="large" color={colors.accent.primary} />
+                  <Text style={styles.qrSubtext}>Generating Invoice...</Text>
                 </View>
-                <Text style={styles.instructionText}>
-                  Scan with Lightning wallet to pay
-                </Text>
-                {lightningInvoice.paid && (
-                  <View style={styles.paidOverlay}>
-                    <Text style={styles.paidText}>PAID!</Text>
+              ) : lightningInvoice ? (
+                <View style={styles.qrContainer}>
+                  <View style={styles.qrWrapper}>
+                    <QRCode
+                      value={lightningInvoice.bolt11}
+                      size={180}
+                      color="black"
+                      backgroundColor="white"
+                    />
                   </View>
-                )}
-              </View>
-            ) : (
-              <View style={styles.qrPlaceholder}>
-                <Text style={styles.qrPlaceholderText}>No Invoice</Text>
-                <Button title="Retry" onPress={generateInvoice} size="sm" />
-              </View>
-            )}
+                  <Text style={styles.instructionText}>
+                    Scan with Lightning wallet
+                  </Text>
+                  {lightningInvoice.paid && (
+                    <View style={styles.paidOverlay}>
+                      <Text style={styles.paidText}>PAID!</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.qrPlaceholder}>
+                  <Text style={styles.qrPlaceholderText}>No Invoice</Text>
+                  <Button title="Retry" onPress={generateInvoice} size="sm" />
+                </View>
+              )}
+            </View>
           </View>
-        )}
-      </View>
-
-      {/* Payment Method Selector - Bottom */}
-      <View style={styles.methodSelector}>
-        <View style={styles.methodPills}>
-          <Pressable
-            style={[
-              styles.methodPill,
-              paymentMethod === 'cashu' && styles.methodPillActive,
-            ]}
-            onPress={() => setPaymentMethod('cashu')}
-          >
-            <Text
-              style={[
-                styles.methodPillText,
-                paymentMethod === 'cashu' && styles.methodPillTextActive,
-              ]}
-            >
-              Cashu
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.methodPill,
-              paymentMethod === 'lightning' && styles.methodPillActive,
-            ]}
-            onPress={() => setPaymentMethod('lightning')}
-          >
-            <Text
-              style={[
-                styles.methodPillText,
-                paymentMethod === 'lightning' && styles.methodPillTextActive,
-              ]}
-            >
-              Lightning
-            </Text>
-          </Pressable>
         </View>
+      ) : (
+        /* Single Screen Mode - Show selected payment method */
+        <View style={styles.paymentArea}>
+          {paymentMethod === 'cashu' ? (
+            <View style={styles.nfcContainer}>
+              <PaymentStateIndicator state={currentPayment.state} />
 
-        {/* Dev: Simulate Payment Button */}
-        <Button
-          title="Simulate Payment (Dev)"
-          onPress={handleSimulatePayment}
-          variant="ghost"
-          size="sm"
-          fullWidth
-        />
-      </View>
+              {/* QR Scan Option */}
+              <View style={styles.orDivider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.orText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Button
+                title="Scan QR Code"
+                onPress={handleScanQR}
+                variant="secondary"
+                size="md"
+              />
+              <Text style={styles.qrHintText}>
+                Scan customer's Cashu token QR
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.lightningContainer}>
+              {isGeneratingInvoice ? (
+                <View style={styles.qrPlaceholder}>
+                  <ActivityIndicator size="large" color={colors.accent.primary} />
+                  <Text style={styles.qrSubtext}>Generating Invoice...</Text>
+                </View>
+              ) : lightningInvoice ? (
+                <View style={styles.qrContainer}>
+                  <View style={styles.qrWrapper}>
+                    <QRCode
+                      value={lightningInvoice.bolt11}
+                      size={200}
+                      color="black"
+                      backgroundColor="white"
+                    />
+                  </View>
+                  <Text style={styles.instructionText}>
+                    Scan with Lightning wallet to pay
+                  </Text>
+                  {lightningInvoice.paid && (
+                    <View style={styles.paidOverlay}>
+                      <Text style={styles.paidText}>PAID!</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.qrPlaceholder}>
+                  <Text style={styles.qrPlaceholderText}>No Invoice</Text>
+                  <Button title="Retry" onPress={generateInvoice} size="sm" />
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Payment Method Selector - Bottom (hidden in dual screen mode) */}
+      {!isDualScreenMode && (
+        <View style={styles.methodSelector}>
+          <View style={styles.methodPills}>
+            <Pressable
+              style={[
+                styles.methodPill,
+                paymentMethod === 'cashu' && styles.methodPillActive,
+              ]}
+              onPress={() => setPaymentMethod('cashu')}
+            >
+              <Text
+                style={[
+                  styles.methodPillText,
+                  paymentMethod === 'cashu' && styles.methodPillTextActive,
+                ]}
+              >
+                Cashu
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.methodPill,
+                paymentMethod === 'lightning' && styles.methodPillActive,
+              ]}
+              onPress={() => setPaymentMethod('lightning')}
+            >
+              <Text
+                style={[
+                  styles.methodPillText,
+                  paymentMethod === 'lightning' && styles.methodPillTextActive,
+                ]}
+              >
+                Lightning
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Dev: Simulate Payment Button */}
+          <Button
+            title="Simulate Payment (Dev)"
+            onPress={handleSimulatePayment}
+            variant="ghost"
+            size="sm"
+            fullWidth
+          />
+        </View>
+      )}
 
       {/* Error Modal */}
       <PaymentErrorModal
@@ -846,5 +957,39 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
     padding: spacing.lg,
+  },
+  // Dual Screen Mode Styles
+  dualScreenContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingVertical: spacing.xl,
+  },
+  dualScreenPanel: {
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+  },
+  panelHeader: {
+    backgroundColor: colors.accent.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+  },
+  panelTitle: {
+    ...typography.h4,
+    color: colors.text.inverse,
+    fontWeight: '600',
+  },
+  panelContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  dualScreenDivider: {
+    width: 2,
+    backgroundColor: colors.border.default,
   },
 });
