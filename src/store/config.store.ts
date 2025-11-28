@@ -6,7 +6,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
   MintConfig,
   CurrencyConfig,
@@ -34,19 +34,6 @@ function triggerSettingsSync() {
     });
   }, 1000);
 }
-
-// Secure storage adapter for Zustand persist
-const secureStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    return await SecureStore.getItemAsync(name);
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    await SecureStore.setItemAsync(name, value);
-  },
-  removeItem: async (name: string): Promise<void> => {
-    await SecureStore.deleteItemAsync(name);
-  },
-};
 
 export interface AppearanceConfig {
   accentColor: string;
@@ -557,7 +544,7 @@ export const useConfigStore = create<ConfigState>()(
     }),
     {
       name: 'cashupay-config',
-      storage: createJSONStorage(() => secureStorage),
+      storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         terminalId: state.terminalId,
         terminalName: state.terminalName,
