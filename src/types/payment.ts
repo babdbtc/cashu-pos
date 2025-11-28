@@ -24,6 +24,9 @@ export interface Payment {
   id: string;
   state: PaymentState;
 
+  // Terminal that processed this payment (for multi-terminal sync)
+  terminalId?: string;
+
   // Requested amount
   requestedAmount?: number;
   requestedCurrency?: string; // 'sat' or fiat code like 'USD'

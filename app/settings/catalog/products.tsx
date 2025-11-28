@@ -16,7 +16,9 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useCatalogStore } from '@/store/catalog.store';
 import { useConfigStore } from '@/store/config.store';
@@ -34,6 +36,7 @@ interface ProductFormData {
 }
 
 export default function ProductsScreen() {
+  const router = useRouter();
   const categories = useCatalogStore((state) => state.categories);
   const products = useCatalogStore((state) => state.products);
   const addProduct = useCatalogStore((state) => state.addProduct);
@@ -189,7 +192,12 @@ export default function ProductsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       {/* Search & Filter Bar */}
       <View style={styles.filterBar}>
         <TextInput
@@ -476,6 +484,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   filterBar: {
     padding: 16,

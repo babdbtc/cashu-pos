@@ -14,6 +14,8 @@ class NostrService {
   private privateKey: string | null = null;
   private publicKey: string | null = null;
   private subscriptions: Map<string, any> = new Map();
+  private initialized = false;
+  private initializing = false;
 
   constructor() {
     this.pool = new SimplePool();
@@ -24,6 +26,23 @@ class NostrService {
    * Generates or loads keypair from secure storage
    */
   async initialize(): Promise<void> {
+    // Prevent re-initialization
+    if (this.initialized) {
+      console.log('[Nostr] Already initialized, skipping');
+      return;
+    }
+
+    // Prevent concurrent initialization
+    if (this.initializing) {
+      console.log('[Nostr] Initialization in progress, waiting...');
+      while (this.initializing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return;
+    }
+
+    this.initializing = true;
+
     try {
       // Try to load existing keypair
       const storedPrivateKey = await SecureStore.getItemAsync('nostr-private-key');
@@ -38,10 +57,13 @@ class NostrService {
         await this.generateKeypair();
       }
 
+      this.initialized = true;
       console.log('[Nostr] Initialized with pubkey:', this.publicKey);
     } catch (error) {
       console.error('[Nostr] Initialization error:', error);
       throw error;
+    } finally {
+      this.initializing = false;
     }
   }
 
@@ -67,6 +89,21 @@ class NostrService {
    */
   getPublicKey(): string | null {
     return this.publicKey;
+  }
+
+  /**
+   * Get private key (for NIP-04 encryption)
+   */
+  getPrivateKey(): string | null {
+    return this.privateKey;
+  }
+
+  /**
+   * Get private key as Uint8Array (for NIP-04 operations)
+   */
+  getPrivateKeyBytes(): Uint8Array | null {
+    if (!this.privateKey) return null;
+    return new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)));
   }
 
   /**
@@ -117,9 +154,15 @@ class NostrService {
   ): string {
     const readRelays = this.relays.filter(r => r.enabled && r.read).map(r => r.url);
 
+    // nostr-tools subscribeMany expects a single Filter object
+    // Merge filters into one by combining their properties
+    const mergedFilter: Filter = filters.reduce((acc, filter) => {
+      return { ...acc, ...filter };
+    }, {} as Filter);
+
     const sub = this.pool.subscribeMany(
       readRelays,
-      filters,
+      mergedFilter,
       {
         onevent(event) {
           console.log('[Nostr] Received event:', event.kind, event.id);
@@ -157,8 +200,14 @@ class NostrService {
   async queryEvents(filters: Filter[]): Promise<Event[]> {
     const readRelays = this.relays.filter(r => r.enabled && r.read).map(r => r.url);
 
+    // nostr-tools querySync expects a single Filter object
+    // Merge filters into one by combining their properties
+    const mergedFilter: Filter = filters.reduce((acc, filter) => {
+      return { ...acc, ...filter };
+    }, {} as Filter);
+
     try {
-      const events = await this.pool.querySync(readRelays, filters);
+      const events = await this.pool.querySync(readRelays, mergedFilter);
       console.log('[Nostr] Queried events:', events.length);
       return events;
     } catch (error) {
@@ -223,6 +272,52 @@ class NostrService {
   }
 
   /**
+   * Publish product deletion event
+   */
+  async publishProductDeletion(productId: string, merchantId: string): Promise<Event> {
+    return this.publishEvent({
+      kind: EventKinds.PRODUCT_DELETE,
+      content: JSON.stringify({ productId, merchantId, deletedAt: Date.now() }),
+      tags: [
+        ['m', merchantId],
+        ['d', productId], // Reference the product being deleted
+      ],
+      created_at: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  /**
+   * Publish category event
+   */
+  async publishCategory(category: any): Promise<Event> {
+    return this.publishEvent({
+      kind: EventKinds.CATEGORY_CREATE,
+      content: JSON.stringify(category),
+      tags: [
+        ['m', category.merchantId],
+        ['d', category.id], // 'd' tag makes it replaceable per category
+      ],
+      created_at: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  /**
+   * Publish category deletion event
+   */
+  async publishCategoryDeletion(categoryId: string, merchantId: string): Promise<Event> {
+    return this.publishEvent({
+      kind: EventKinds.CATEGORY_CREATE, // Use same kind with isDeleted flag
+      content: JSON.stringify({ categoryId, merchantId, isDeleted: true, deletedAt: Date.now() }),
+      tags: [
+        ['m', merchantId],
+        ['d', categoryId],
+        ['deleted', 'true'],
+      ],
+      created_at: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  /**
    * Publish transaction event
    */
   async publishTransaction(transaction: any): Promise<Event> {
@@ -239,6 +334,21 @@ class NostrService {
   }
 
   /**
+   * Publish settings sync event
+   */
+  async publishSettings(settings: any): Promise<Event> {
+    return this.publishEvent({
+      kind: EventKinds.SETTINGS_SYNC,
+      content: JSON.stringify(settings),
+      tags: [
+        ['m', settings.merchantId],
+        ['d', 'settings'], // Single replaceable settings per merchant
+      ],
+      created_at: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  /**
    * Subscribe to merchant's events
    */
   subscribeMerchantEvents(
@@ -246,15 +356,23 @@ class NostrService {
     since?: number,
     onEvent?: (event: Event) => void
   ): string {
-    const filters: Filter[] = [
-      {
-        kinds: Object.values(EventKinds) as number[],
-        '#m': [merchantId],
-        since: since || Math.floor(Date.now() / 1000) - 86400, // Last 24h by default
-      },
-    ];
+    // Get unique kind values (some are duplicated like PRODUCT_CREATE/UPDATE)
+    const kindValues = [...new Set(Object.values(EventKinds))] as number[];
 
-    return this.subscribeToEvents(filters, onEvent || (() => {}));
+    // Calculate since timestamp - use at least 1 hour ago to avoid issues with some relays
+    const sinceTimestamp = since && since > 0
+      ? since
+      : Math.floor(Date.now() / 1000) - 86400; // Last 24h by default
+
+    const filter: Filter = {
+      kinds: kindValues,
+      '#m': [merchantId],
+      since: sinceTimestamp,
+    };
+
+    console.log('[Nostr] Subscribing with filter:', JSON.stringify(filter));
+
+    return this.subscribeToEvents([filter], onEvent || (() => {}));
   }
 
   /**
@@ -268,6 +386,7 @@ class NostrService {
     // Close pool
     this.pool.close(this.getActiveRelays());
 
+    this.initialized = false;
     console.log('[Nostr] Cleaned up');
   }
 }

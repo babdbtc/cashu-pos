@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { colors, spacing, typography, borderRadius } from '@/theme';
@@ -34,12 +35,10 @@ export default function AdminDashboard() {
 
     return (
         <Screen style={styles.screen}>
-            <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backButton}>
-                    <Text style={styles.backText}>Back</Text>
-                </Pressable>
-                <Text style={styles.title}>Admin Dashboard</Text>
-            </View>
+            {/* Back Button */}
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+                <Ionicons name="chevron-back" size={28} color="#fff" />
+            </Pressable>
 
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Total Balance Card */}
@@ -146,24 +145,12 @@ const styles = StyleSheet.create({
     screen: {
         flex: 1,
         padding: spacing.md,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: spacing.lg,
-        paddingTop: spacing.sm,
+        paddingTop: 0,
     },
     backButton: {
-        padding: spacing.sm,
-        marginRight: spacing.md,
-    },
-    backText: {
-        color: colors.text.secondary,
-        fontSize: 16,
-    },
-    title: {
-        ...typography.h2,
-        color: colors.text.primary,
+        padding: 12,
+        paddingLeft: 0,
+        marginBottom: spacing.sm,
     },
     content: {
         paddingBottom: spacing.xxl,

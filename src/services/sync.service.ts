@@ -6,8 +6,17 @@
  */
 
 import { nostrService } from './nostr.service';
-import { databaseService, type Product, type Transaction } from './database.service';
+import { databaseService, type Product, type Transaction, type Category } from './database.service';
 import { EventKinds } from '@/types/nostr';
+import {
+  handleIncomingSyncProduct,
+  handleIncomingSyncProductDeletion,
+  handleIncomingSyncCategory,
+  handleIncomingSyncCategoryDeletion,
+  handleIncomingSyncTransaction,
+  handleIncomingSettings,
+} from './sync-integration';
+import type { SettingsSyncEvent } from '@/types/nostr';
 import type { Event } from 'nostr-tools';
 
 export interface SyncConfig {
@@ -32,23 +41,58 @@ class SyncService {
   private merchantId: string | null = null;
   private terminalId: string | null = null;
   private isSyncing = false;
+  private initialized = false;
+  private initializing = false;
 
   /**
    * Initialize sync service
    */
   async initialize(merchantId: string, terminalId: string): Promise<void> {
+    // Update IDs even if already initialized (they might change)
     this.merchantId = merchantId;
     this.terminalId = terminalId;
 
+    // Prevent re-initialization of services
+    if (this.initialized) {
+      console.log('[Sync] Already initialized, skipping service init');
+      return;
+    }
+
+    // Prevent concurrent initialization
+    if (this.initializing) {
+      console.log('[Sync] Initialization in progress, waiting...');
+      while (this.initializing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return;
+    }
+
+    this.initializing = true;
+
     try {
-      // Initialize services
+      // Initialize nostr first
+      console.log('[Sync] Initializing nostr...');
       await nostrService.initialize();
+
+      // Initialize database
+      console.log('[Sync] Initializing database...');
       await databaseService.initialize();
 
+      // Verify database is ready
+      const dbReady = await databaseService.waitForReady();
+      if (!dbReady) {
+        console.warn('[Sync] Database not ready, continuing without database');
+      } else {
+        console.log('[Sync] Database ready');
+      }
+
+      this.initialized = true;
       console.log('[Sync] Initialized for merchant:', merchantId, 'terminal:', terminalId);
     } catch (error) {
       console.error('[Sync] Initialization error:', error);
       throw error;
+    } finally {
+      this.initializing = false;
     }
   }
 
@@ -101,16 +145,33 @@ class SyncService {
   }
 
   /**
+   * Check if sync is currently running
+   */
+  isRunning(): boolean {
+    return this.config.enabled;
+  }
+
+  /**
    * Subscribe to Nostr events for this merchant
    */
   private async subscribeToEvents(): Promise<void> {
     if (!this.merchantId) return;
 
-    const lastSync = await databaseService.getLastSyncTimestamp(this.terminalId!);
+    let lastSyncMs = 0;
+    if (databaseService.isInitialized()) {
+      try {
+        lastSyncMs = await databaseService.getLastSyncTimestamp(this.terminalId!);
+      } catch (error) {
+        console.warn('[Sync] Could not get last sync timestamp:', error);
+      }
+    }
+
+    // Convert milliseconds to seconds for Nostr filter
+    const lastSyncSeconds = lastSyncMs ? Math.floor(lastSyncMs / 1000) : 0;
 
     this.subscriptionId = nostrService.subscribeMerchantEvents(
       this.merchantId,
-      lastSync,
+      lastSyncSeconds,
       this.handleIncomingEvent.bind(this)
     );
   }
@@ -121,6 +182,16 @@ class SyncService {
   private async handleIncomingEvent(event: Event): Promise<void> {
     try {
       console.log('[Sync] Processing event:', event.kind, event.id);
+
+      // Try to initialize database if not ready (lazy init)
+      if (!databaseService.isInitialized()) {
+        try {
+          await databaseService.initialize();
+          console.log('[Sync] Database initialized on demand');
+        } catch (dbErr) {
+          console.warn('[Sync] Database init failed, continuing with UI-only updates:', dbErr);
+        }
+      }
 
       // Parse content
       const data = JSON.parse(event.content);
@@ -139,8 +210,21 @@ class SyncService {
           await this.handleProductEvent(data, event);
           break;
 
+        case EventKinds.PRODUCT_DELETE:
+          await this.handleProductDeleteEvent(data);
+          break;
+
+        case EventKinds.CATEGORY_CREATE:
+        case EventKinds.CATEGORY_UPDATE:
+          await this.handleCategoryEvent(data, event);
+          break;
+
         case EventKinds.TRANSACTION:
           await this.handleTransactionEvent(data);
+          break;
+
+        case EventKinds.SETTINGS_SYNC:
+          this.handleSettingsEvent(data);
           break;
 
         // Add more handlers as needed
@@ -149,7 +233,8 @@ class SyncService {
       }
 
       // Update checkpoint
-      await databaseService.updateSyncCheckpoint(this.terminalId!, event.created_at);
+      // Store timestamp in milliseconds for consistency with Date.now()
+      await databaseService.updateSyncCheckpoint(this.terminalId!, event.created_at * 1000);
     } catch (error) {
       console.error('[Sync] Error handling event:', error);
     }
@@ -159,20 +244,29 @@ class SyncService {
    * Handle product event with conflict resolution
    */
   private async handleProductEvent(data: Product, event: Event): Promise<void> {
+    // Ensure database is initialized
+    if (!databaseService.isInitialized()) {
+      console.log('[Sync] Database not ready, updating UI only for product');
+      handleIncomingSyncProduct(data);
+      return;
+    }
+
     // Get existing product
     const existing = await databaseService.getProducts(data.merchantId);
     const existingProduct = existing.find(p => p.id === data.id);
+
+    let shouldUpdate = false;
 
     if (existingProduct) {
       // Conflict resolution: use version number (CRDT)
       if (data.version > existingProduct.version) {
         console.log('[Sync] Updating product with newer version:', data.id);
-        await databaseService.upsertProduct(data);
+        shouldUpdate = true;
       } else if (data.version === existingProduct.version) {
         // Same version, use timestamp
         if (data.updatedAt > existingProduct.updatedAt) {
           console.log('[Sync] Updating product with newer timestamp:', data.id);
-          await databaseService.upsertProduct(data);
+          shouldUpdate = true;
         } else {
           console.log('[Sync] Keeping existing product:', data.id);
         }
@@ -182,7 +276,89 @@ class SyncService {
     } else {
       // New product, insert
       console.log('[Sync] Inserting new product:', data.id);
+      shouldUpdate = true;
+    }
+
+    if (shouldUpdate) {
+      // Update database
       await databaseService.upsertProduct(data);
+      // Update UI store
+      handleIncomingSyncProduct(data);
+    }
+  }
+
+  /**
+   * Handle product deletion event
+   */
+  private async handleProductDeleteEvent(data: { productId: string; merchantId: string }): Promise<void> {
+    console.log('[Sync] Deleting product:', data.productId);
+
+    // Update UI store first (always works)
+    handleIncomingSyncProductDeletion(data.productId);
+
+    // Update database if ready
+    if (databaseService.isInitialized()) {
+      await databaseService.deleteProduct(data.productId);
+    }
+  }
+
+  /**
+   * Handle category event with conflict resolution
+   */
+  private async handleCategoryEvent(data: Category & { isDeleted?: boolean; categoryId?: string }, event: Event): Promise<void> {
+    // Ensure database is initialized
+    if (!databaseService.isInitialized()) {
+      console.log('[Sync] Database not ready, updating UI only for category');
+      // Still update UI even if database isn't ready
+      if (data.isDeleted && data.categoryId) {
+        handleIncomingSyncCategoryDeletion(data.categoryId);
+      } else {
+        handleIncomingSyncCategory(data);
+      }
+      return;
+    }
+
+    // Check if this is a deletion event
+    if (data.isDeleted && data.categoryId) {
+      console.log('[Sync] Deleting category:', data.categoryId);
+      await databaseService.deleteCategory(data.categoryId);
+      handleIncomingSyncCategoryDeletion(data.categoryId);
+      return;
+    }
+
+    // Get existing category
+    const existing = await databaseService.getCategories(data.merchantId);
+    const existingCategory = existing.find(c => c.id === data.id);
+
+    let shouldUpdate = false;
+
+    if (existingCategory) {
+      // Conflict resolution: use version number
+      if (data.version > existingCategory.version) {
+        console.log('[Sync] Updating category with newer version:', data.id);
+        shouldUpdate = true;
+      } else if (data.version === existingCategory.version) {
+        // Same version, use timestamp
+        if (data.updatedAt > existingCategory.updatedAt) {
+          console.log('[Sync] Updating category with newer timestamp:', data.id);
+          shouldUpdate = true;
+        } else {
+          console.log('[Sync] Keeping existing category:', data.id);
+        }
+      } else {
+        console.log('[Sync] Ignoring older category version:', data.id);
+      }
+    } else {
+      // New category, insert
+      console.log('[Sync] Inserting new category:', data.id);
+      shouldUpdate = true;
+    }
+
+    if (shouldUpdate) {
+      // Update database
+      await databaseService.upsertCategory(data);
+      // Update UI store
+      handleIncomingSyncCategory(data);
     }
   }
 
@@ -190,6 +366,15 @@ class SyncService {
    * Handle transaction event (append-only, no conflicts)
    */
   private async handleTransactionEvent(data: Transaction): Promise<void> {
+    // Update UI store first (always works)
+    handleIncomingSyncTransaction(data);
+
+    // Skip database operations if not ready
+    if (!databaseService.isInitialized()) {
+      console.log('[Sync] Database not ready, UI updated for transaction');
+      return;
+    }
+
     // Transactions are append-only, never conflict
     // Just check if we already have it
     const existing = await databaseService.getTransactions(data.merchantId, 1000);
@@ -201,6 +386,14 @@ class SyncService {
     } else {
       console.log('[Sync] Transaction already exists:', data.id);
     }
+  }
+
+  /**
+   * Handle settings sync event
+   */
+  private handleSettingsEvent(data: SettingsSyncEvent): void {
+    console.log('[Sync] Received settings update from:', data.updatedBy);
+    handleIncomingSettings(data);
   }
 
   /**
@@ -227,6 +420,12 @@ class SyncService {
       return;
     }
 
+    // Skip if database not ready
+    if (!databaseService.isInitialized()) {
+      console.log('[Sync] Database not ready, skipping sync');
+      return;
+    }
+
     this.isSyncing = true;
 
     try {
@@ -237,6 +436,13 @@ class SyncService {
 
       for (const queuedEvent of pendingEvents) {
         try {
+          // Skip events with invalid data
+          if (!queuedEvent.eventData) {
+            console.warn('[Sync] Skipping event with no data:', queuedEvent.id);
+            await databaseService.markSyncEventCompleted(queuedEvent.id);
+            continue;
+          }
+
           const eventData = JSON.parse(queuedEvent.eventData);
 
           // Publish based on kind
@@ -246,26 +452,93 @@ class SyncService {
               await nostrService.publishProduct(eventData);
               break;
 
+            case EventKinds.PRODUCT_DELETE:
+              if (eventData.productId && eventData.merchantId) {
+                await nostrService.publishProductDeletion(eventData.productId, eventData.merchantId);
+              }
+              break;
+
+            case EventKinds.CATEGORY_CREATE:
+              await nostrService.publishCategory(eventData);
+              break;
+
             case EventKinds.TRANSACTION:
               await nostrService.publishTransaction(eventData);
               break;
 
-            // Add more cases as needed
+            case EventKinds.SETTINGS_SYNC:
+              await nostrService.publishSettings(eventData);
+              break;
+
+            default:
+              console.warn('[Sync] Unknown event kind:', queuedEvent.eventKind);
           }
 
           // Mark as synced
           await databaseService.markSyncEventCompleted(queuedEvent.id);
         } catch (error) {
           console.error('[Sync] Error publishing event:', queuedEvent.id, error);
-          // Event stays in queue for retry
+          // Mark as synced to avoid infinite retry of corrupt events
+          await databaseService.markSyncEventCompleted(queuedEvent.id);
         }
       }
 
       console.log('[Sync] Sync completed');
+
+      // Update last sync timestamp
+      if (this.terminalId) {
+        await databaseService.updateSyncCheckpoint(this.terminalId, Date.now());
+      }
     } catch (error) {
       console.error('[Sync] Sync error:', error);
     } finally {
       this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Refresh data from relays (pull latest events)
+   */
+  async refreshFromRelays(): Promise<void> {
+    if (!this.merchantId || !this.terminalId) {
+      console.log('[Sync] Not initialized, cannot refresh');
+      return;
+    }
+
+    console.log('[Sync] Refreshing from relays...');
+
+    try {
+      // Get last sync timestamp
+      let lastSyncMs = 0;
+      if (databaseService.isInitialized()) {
+        lastSyncMs = await databaseService.getLastSyncTimestamp(this.terminalId);
+      }
+
+      // Query for events since last sync (or last 24h if never synced)
+      const sinceSeconds = lastSyncMs
+        ? Math.floor(lastSyncMs / 1000)
+        : Math.floor(Date.now() / 1000) - 86400;
+
+      const filter = {
+        kinds: [...new Set(Object.values(EventKinds))] as number[],
+        '#m': [this.merchantId],
+        since: sinceSeconds,
+      };
+
+      const events = await nostrService.queryEvents([filter]);
+      console.log('[Sync] Fetched', events.length, 'events from relays');
+
+      // Process each event
+      for (const event of events) {
+        await this.handleIncomingEvent(event);
+      }
+
+      // Update checkpoint
+      await databaseService.updateSyncCheckpoint(this.terminalId, Date.now());
+
+      console.log('[Sync] Refresh completed');
+    } catch (error) {
+      console.error('[Sync] Refresh error:', error);
     }
   }
 
@@ -291,17 +564,97 @@ class SyncService {
    * Publish local transaction
    */
   async publishTransactionChange(transaction: Transaction): Promise<void> {
+    // Always try to publish if Nostr is available (transactions are important)
+    try {
+      // Ensure Nostr is initialized
+      await nostrService.initialize();
+      await nostrService.publishTransaction(transaction);
+      console.log('[Sync] Published transaction:', transaction.id);
+    } catch (error) {
+      console.error('[Sync] Error publishing transaction:', error);
+      // Try to queue for later if database is ready
+      if (databaseService.isInitialized()) {
+        await databaseService.queueSyncEvent(EventKinds.TRANSACTION, transaction);
+        console.log('[Sync] Queued transaction for later:', transaction.id);
+      } else {
+        console.warn('[Sync] Could not queue transaction - database not ready');
+      }
+    }
+  }
+
+  /**
+   * Publish product deletion
+   */
+  async publishProductDeletion(productId: string, merchantId: string, terminalId: string): Promise<void> {
+    const deletionEvent = { productId, merchantId, deletedBy: terminalId, deletedAt: Date.now() };
+
     if (!this.config.enabled) {
-      console.log('[Sync] Sync disabled, queueing transaction');
-      await databaseService.queueSyncEvent(EventKinds.TRANSACTION, transaction);
+      console.log('[Sync] Sync disabled, queueing product deletion');
+      await databaseService.queueSyncEvent(EventKinds.PRODUCT_DELETE, deletionEvent);
       return;
     }
 
     try {
-      await nostrService.publishTransaction(transaction);
+      await nostrService.publishProductDeletion(productId, merchantId);
     } catch (error) {
-      console.error('[Sync] Error publishing transaction, queueing:', error);
-      await databaseService.queueSyncEvent(EventKinds.TRANSACTION, transaction);
+      console.error('[Sync] Error publishing product deletion, queueing:', error);
+      await databaseService.queueSyncEvent(EventKinds.PRODUCT_DELETE, deletionEvent);
+    }
+  }
+
+  /**
+   * Publish local category change
+   */
+  async publishCategoryChange(category: Category): Promise<void> {
+    if (!this.config.enabled) {
+      console.log('[Sync] Sync disabled, queueing category change');
+      await databaseService.queueSyncEvent(EventKinds.CATEGORY_CREATE, category);
+      return;
+    }
+
+    try {
+      await nostrService.publishCategory(category);
+    } catch (error) {
+      console.error('[Sync] Error publishing category, queueing:', error);
+      await databaseService.queueSyncEvent(EventKinds.CATEGORY_CREATE, category);
+    }
+  }
+
+  /**
+   * Publish category deletion
+   */
+  async publishCategoryDeletion(categoryId: string, merchantId: string, terminalId: string): Promise<void> {
+    const deletionEvent = { categoryId, merchantId, deletedBy: terminalId, deletedAt: Date.now() };
+
+    if (!this.config.enabled) {
+      console.log('[Sync] Sync disabled, queueing category deletion');
+      await databaseService.queueSyncEvent(EventKinds.CATEGORY_CREATE, deletionEvent);
+      return;
+    }
+
+    try {
+      await nostrService.publishCategoryDeletion(categoryId, merchantId);
+    } catch (error) {
+      console.error('[Sync] Error publishing category deletion, queueing:', error);
+      await databaseService.queueSyncEvent(EventKinds.CATEGORY_CREATE, deletionEvent);
+    }
+  }
+
+  /**
+   * Publish settings change
+   */
+  async publishSettingsChange(settings: SettingsSyncEvent): Promise<void> {
+    if (!this.config.enabled) {
+      console.log('[Sync] Sync disabled, queueing settings change');
+      await databaseService.queueSyncEvent(EventKinds.SETTINGS_SYNC, settings);
+      return;
+    }
+
+    try {
+      await nostrService.publishSettings(settings);
+    } catch (error) {
+      console.error('[Sync] Error publishing settings, queueing:', error);
+      await databaseService.queueSyncEvent(EventKinds.SETTINGS_SYNC, settings);
     }
   }
 
@@ -315,13 +668,25 @@ class SyncService {
     lastSync: number;
     nostrPubkey: string | null;
   }> {
-    const pendingEvents = await databaseService.getPendingSyncEvents();
-    const lastSync = await databaseService.getLastSyncTimestamp(this.terminalId!);
+    let pendingEventsCount = 0;
+    let lastSync = 0;
+
+    // Only query database if it's been initialized
+    if (this.merchantId && this.terminalId && databaseService.isInitialized()) {
+      try {
+        const pendingEvents = await databaseService.getPendingSyncEvents();
+        pendingEventsCount = pendingEvents.length;
+        lastSync = await databaseService.getLastSyncTimestamp(this.terminalId);
+      } catch (error) {
+        // Database error, return defaults
+        console.log('[Sync] Database query error:', error);
+      }
+    }
 
     return {
       enabled: this.config.enabled,
       syncing: this.isSyncing,
-      pendingEvents: pendingEvents.length,
+      pendingEvents: pendingEventsCount,
       lastSync,
       nostrPubkey: nostrService.getPublicKey(),
     };
@@ -334,6 +699,7 @@ class SyncService {
     this.stopSync();
     await nostrService.cleanup();
     await databaseService.close();
+    this.initialized = false;
     console.log('[Sync] Cleaned up');
   }
 }

@@ -14,12 +14,15 @@ import {
   Switch,
   TextInput,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useAlert } from '../../src/hooks/useAlert';
 import { useConfigStore } from '../../src/store/config.store';
 
 export default function SecuritySettingsScreen() {
+  const router = useRouter();
   const { success, error: showError, confirm } = useAlert();
   const security = useConfigStore((state) => state.security);
   const setRequirePin = useConfigStore((state) => state.setRequirePin);
@@ -83,7 +86,12 @@ export default function SecuritySettingsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView}>
         {/* PIN Settings */}
         <View style={styles.section}>
@@ -283,6 +291,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

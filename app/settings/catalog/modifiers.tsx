@@ -16,7 +16,9 @@ import {
   Alert,
   Switch,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useCatalogStore } from '@/store/catalog.store';
 import { useConfigStore } from '@/store/config.store';
 import type { ModifierGroup, Modifier } from '@/types/catalog';
@@ -35,6 +37,7 @@ interface ModifierFormData {
 }
 
 export default function ModifiersScreen() {
+  const router = useRouter();
   const modifierGroups = useCatalogStore((state) => state.modifierGroups);
   const setModifierGroups = useCatalogStore((state) => state.setModifierGroups);
   const currency = useConfigStore((state) => state.currency);
@@ -230,7 +233,12 @@ export default function ModifiersScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {modifierGroups.length === 0 ? (
           <View style={styles.emptyState}>
@@ -507,6 +515,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

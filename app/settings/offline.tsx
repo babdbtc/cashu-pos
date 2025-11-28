@@ -14,11 +14,14 @@ import {
   Switch,
   TextInput,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useConfigStore } from '../../src/store/config.store';
 
 export default function OfflineSettingsScreen() {
+  const router = useRouter();
   const offline = useConfigStore((state) => state.offline);
   const setOfflineEnabled = useConfigStore((state) => state.setOfflineEnabled);
   const setOfflineMaxAmount = useConfigStore((state) => state.setOfflineMaxAmount);
@@ -59,7 +62,12 @@ export default function OfflineSettingsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView}>
         {/* Enable Offline Mode */}
         <View style={styles.section}>
@@ -182,6 +190,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

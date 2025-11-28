@@ -5,12 +5,15 @@
  */
 
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@/theme';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useConfigStore } from '@/store/config.store';
 
 export default function AppearanceSettingsScreen() {
+  const router = useRouter();
   const appearance = useConfigStore((state) => state.appearance);
   const setAccentColor = useConfigStore((state) => state.setAccentColor);
   const setTheme = useConfigStore((state) => state.setTheme);
@@ -28,7 +31,12 @@ export default function AppearanceSettingsScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView}>
         {/* Accent Color */}
         <View style={styles.section}>
@@ -138,6 +146,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

@@ -18,6 +18,22 @@ import type {
   BusinessType,
   TerminalType,
 } from '@/types/config';
+import { syncSettingsChange } from '@/services/sync-integration';
+
+// Debounce timer for settings sync
+let settingsSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Trigger settings sync with debounce (wait 1s after last change)
+function triggerSettingsSync() {
+  if (settingsSyncTimer) {
+    clearTimeout(settingsSyncTimer);
+  }
+  settingsSyncTimer = setTimeout(() => {
+    syncSettingsChange().catch(err => {
+      console.error('[Config Store] Failed to sync settings:', err);
+    });
+  }, 1000);
+}
 
 // Secure storage adapter for Zustand persist
 const secureStorage = {
@@ -65,6 +81,9 @@ interface ConfigState {
   change: ChangeConfig;
   security: SecurityConfig;
   appearance: AppearanceConfig;
+
+  // Sync settings
+  syncEnabled: boolean;
 
   // Actions
   initialize: () => Promise<void>;
@@ -116,6 +135,10 @@ interface ConfigState {
   setRequirePinForSettings: (require: boolean) => void;
   setMaxPaymentAmount: (amount: number) => void;
   setDailyLimit: (amount: number) => void;
+
+  // Sync-specific actions
+  setMerchantId: (merchantId: string) => void;
+  setSyncEnabled: (enabled: boolean) => void;
 }
 
 // Default mint configuration
@@ -228,6 +251,9 @@ export const useConfigStore = create<ConfigState>()(
         theme: 'dark',
       },
 
+      // Sync
+      syncEnabled: false,
+
       // Actions
       initialize: async () => {
         set({ isLoading: true });
@@ -259,6 +285,7 @@ export const useConfigStore = create<ConfigState>()(
         set((state) => ({
           mints: { ...state.mints, ...config },
         }));
+        triggerSettingsSync();
       },
 
       addTrustedMint: (url, name) => {
@@ -278,6 +305,7 @@ export const useConfigStore = create<ConfigState>()(
             primaryMintUrl: state.mints.primaryMintUrl || url,
           },
         }));
+        triggerSettingsSync();
       },
 
       removeTrustedMint: (url) => {
@@ -295,6 +323,7 @@ export const useConfigStore = create<ConfigState>()(
             },
           };
         });
+        triggerSettingsSync();
       },
 
       setPrimaryMint: (url) => {
@@ -304,12 +333,14 @@ export const useConfigStore = create<ConfigState>()(
             primaryMintUrl: url,
           },
         }));
+        triggerSettingsSync();
       },
 
       setCurrencyConfig: (config) => {
         set((state) => ({
           currency: { ...state.currency, ...config },
         }));
+        triggerSettingsSync();
       },
 
       setOfflineConfig: (config) => {
@@ -326,12 +357,14 @@ export const useConfigStore = create<ConfigState>()(
         set((state) => ({
           change: { ...state.change, ...config },
         }));
+        triggerSettingsSync();
       },
 
       setSecurityConfig: (config) => {
         set((state) => ({
           security: { ...state.security, ...config },
         }));
+        triggerSettingsSync();
       },
 
       resetToDefaults: () => {
@@ -512,6 +545,15 @@ export const useConfigStore = create<ConfigState>()(
           appearance: { ...state.appearance, theme },
         }));
       },
+
+      // Sync-specific actions
+      setMerchantId: (merchantId) => {
+        set({ merchantId });
+      },
+
+      setSyncEnabled: (enabled) => {
+        set({ syncEnabled: enabled });
+      },
     }),
     {
       name: 'cashupay-config',
@@ -532,6 +574,7 @@ export const useConfigStore = create<ConfigState>()(
         change: state.change,
         security: state.security,
         appearance: state.appearance,
+        syncEnabled: state.syncEnabled,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),
     }

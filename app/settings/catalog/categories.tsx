@@ -15,7 +15,9 @@ import {
   Modal,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useCatalogStore } from '@/store/catalog.store';
 import type { Category } from '@/types/catalog';
 
@@ -37,6 +39,7 @@ interface CategoryFormData {
 }
 
 export default function CategoriesScreen() {
+  const router = useRouter();
   const categories = useCatalogStore((state) => state.categories);
   const products = useCatalogStore((state) => state.products);
   const addCategory = useCatalogStore((state) => state.addCategory);
@@ -131,7 +134,12 @@ export default function CategoriesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {categories.length === 0 ? (
           <View style={styles.emptyState}>
@@ -292,6 +300,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

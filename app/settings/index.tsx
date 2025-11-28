@@ -4,9 +4,10 @@
  * Main settings overview with navigation to sub-settings.
  */
 
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useConfigStore } from '../../src/store/config.store';
 import { useCatalogStore } from '../../src/store/catalog.store';
@@ -16,9 +17,34 @@ interface SettingsSectionProps {
   description: string;
   href: string;
   value?: string;
+  restricted?: boolean;
 }
 
-function SettingsSection({ title, description, href, value }: SettingsSectionProps) {
+function SettingsSection({ title, description, href, value, restricted }: SettingsSectionProps) {
+  if (restricted) {
+    return (
+      <Pressable
+        style={[styles.section, styles.sectionRestricted]}
+        onPress={() => Alert.alert(
+          'Restricted',
+          'This setting is only available on the main terminal.',
+          [{ text: 'OK' }]
+        )}
+      >
+        <View style={styles.sectionContent}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={[styles.sectionTitle, styles.sectionTitleRestricted]}>{title}</Text>
+            <Ionicons name="lock-closed" size={14} color="#666" />
+          </View>
+          <Text style={styles.sectionDescription}>{description}</Text>
+        </View>
+        <View style={styles.sectionRight}>
+          <Text style={styles.restrictedLabel}>Main Only</Text>
+        </View>
+      </Pressable>
+    );
+  }
+
   return (
     <Link href={href as any} asChild>
       <Pressable style={styles.section}>
@@ -38,6 +64,7 @@ function SettingsSection({ title, description, href, value }: SettingsSectionPro
 export default function SettingsScreen() {
   const router = useRouter();
   const terminalName = useConfigStore((state) => state.terminalName);
+  const terminalType = useConfigStore((state) => state.terminalType);
   const merchantName = useConfigStore((state) => state.merchantName);
   const currency = useConfigStore((state) => state.currency);
   const primaryMint = useConfigStore((state) => state.mints.primaryMintUrl);
@@ -45,12 +72,19 @@ export default function SettingsScreen() {
   const products = useCatalogStore((state) => state.products);
   const categories = useCatalogStore((state) => state.categories);
 
+  const isSubTerminal = terminalType === 'sub';
+
   const mintDisplay = primaryMint
     ? new URL(primaryMint).hostname
     : 'Not configured';
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView}>
         {/* Terminal Info */}
         <View style={styles.group}>
@@ -64,6 +98,17 @@ export default function SettingsScreen() {
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Terminal</Text>
               <Text style={styles.infoValue}>{terminalName}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Type</Text>
+              <View style={styles.terminalTypeBadge}>
+                <Text style={[
+                  styles.terminalTypeText,
+                  isSubTerminal ? styles.terminalTypeSub : styles.terminalTypeMain
+                ]}>
+                  {isSubTerminal ? 'Sub-Terminal' : 'Main Terminal'}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -157,18 +202,21 @@ export default function SettingsScreen() {
             title="Staff Management"
             description="Manage staff accounts and permissions"
             href="/settings/staff"
+            restricted={isSubTerminal}
           />
 
           <SettingsSection
             title="Security"
             description="PIN, limits, and security settings"
             href="/settings/security"
+            restricted={isSubTerminal}
           />
 
           <SettingsSection
             title="Admin Dashboard"
             description="Manage funds, withdrawals, and exports"
             href="/admin"
+            restricted={isSubTerminal}
           />
 
         </View>
@@ -195,6 +243,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f0f1a',
   },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
+  },
   scrollView: {
     flex: 1,
   },
@@ -219,14 +271,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#2a2a3e',
   },
+  sectionRestricted: {
+    opacity: 0.6,
+  },
   sectionContent: {
     flex: 1,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
     marginBottom: 4,
+  },
+  sectionTitleRestricted: {
+    marginBottom: 0,
+  },
+  restrictedLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
   },
   sectionDescription: {
     fontSize: 14,
@@ -263,6 +332,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#ffffff',
     fontWeight: '500',
+  },
+  terminalTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  terminalTypeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  terminalTypeMain: {
+    color: '#4ade80',
+  },
+  terminalTypeSub: {
+    color: '#f59e0b',
   },
   aboutSection: {
     backgroundColor: '#1a1a2e',

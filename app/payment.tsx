@@ -19,7 +19,9 @@ import { usePaymentStore, PaymentMethod } from '@/store/payment.store';
 import { useConfigStore } from '@/store/config.store';
 import { useWalletStore } from '@/store/wallet.store';
 import { nfcService } from '@/services/nfc.service';
-import { createMintQuote, checkMintQuote, mintTokens, parseToken, swapTokens } from '@/services/cashu.service';
+import { createMintQuote, checkMintQuote, mintTokens, parseToken, swapTokens, encodeToken } from '@/services/cashu.service';
+import { syncTransaction } from '@/services/sync-integration';
+import { tokenForwardService } from '@/services/token-forward.service';
 
 export default function PaymentScreen() {
   const router = useRouter();
@@ -36,9 +38,12 @@ export default function PaymentScreen() {
     setLightningPaid,
   } = usePaymentStore();
 
-  const { mints, currency } = useConfigStore();
+  const { mints, currency, terminalType, terminalId, terminalName, merchantId } = useConfigStore();
   const { addProofs } = useWalletStore();
   const primaryMintUrl = mints.primaryMintUrl;
+
+  // Check if this terminal should forward tokens to main
+  const shouldForwardTokens = tokenForwardService.shouldForwardTokens();
 
   const [isListening, setIsListening] = useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
@@ -168,10 +173,47 @@ export default function PaymentScreen() {
       // Mint tokens
       const proofs = await mintTokens(primaryMintUrl, currentPayment.satsAmount, quoteId);
 
-      // Add to wallet with mint URL
-      addProofs(proofs, primaryMintUrl);
+      const txId = `ln_${quoteId.substring(0, 8)}`;
 
-      completePayment(`ln_${quoteId.substring(0, 8)}`);
+      // Check if this is a sub-terminal that should forward tokens to main
+      if (shouldForwardTokens) {
+        // Encode the minted tokens for forwarding
+        const tokenString = encodeToken(primaryMintUrl, proofs);
+        console.log('[Payment] Forwarding Lightning payment to main terminal...');
+
+        const forwardResult = await tokenForwardService.forwardToken({
+          token: tokenString,
+          transactionId: txId,
+          amount: currentPayment.satsAmount,
+          fiatAmount: currentPayment.fiatAmount,
+          fiatCurrency: currentPayment.fiatCurrency,
+          paymentMethod: 'lightning',
+          mintUrl: primaryMintUrl,
+        });
+
+        if (!forwardResult.success) {
+          console.error('[Payment] Token forward failed:', forwardResult.error);
+          // Fallback: store locally if forward fails
+          addProofs(proofs, primaryMintUrl);
+        }
+      } else {
+        // Main terminal or standalone: store locally
+        addProofs(proofs, primaryMintUrl);
+      }
+
+      completePayment(txId);
+
+      // Sync transaction to other terminals (for stats/reporting)
+      syncTransaction({
+        id: txId,
+        total: currentPayment.satsAmount,
+        items: [],
+        paymentMethod: 'lightning',
+        fiatAmount: currentPayment.fiatAmount,
+        fiatCurrency: currentPayment.fiatCurrency,
+        exchangeRate: currentPayment.exchangeRate,
+      }).catch(err => console.error('Failed to sync transaction:', err));
+
       router.replace('/result');
     } catch (error) {
       console.error('Failed to mint tokens after payment:', error);
@@ -206,15 +248,66 @@ export default function PaymentScreen() {
 
       updatePaymentState('processing');
 
-      // Swap tokens (receive)
-      // Use the mint from the token
       const mintUrl = parsed.token.mint;
-      const { proofs } = await swapTokens(mintUrl, parsed.token.proofs);
+      const txId = `tx_${Date.now()}`;
 
-      // Add to wallet with mint URL
-      addProofs(proofs, mintUrl);
+      // Check if this is a sub-terminal that should forward tokens to main
+      if (shouldForwardTokens && currentPayment) {
+        // Forward token to main terminal instead of storing locally
+        console.log('[Payment] Forwarding token to main terminal...');
 
-      completePayment(`tx_${Date.now()}`);
+        const forwardResult = await tokenForwardService.forwardToken({
+          token: tokenString,
+          transactionId: txId,
+          amount: currentPayment.satsAmount,
+          fiatAmount: currentPayment.fiatAmount,
+          fiatCurrency: currentPayment.fiatCurrency,
+          paymentMethod: 'cashu_nfc',
+          mintUrl,
+        });
+
+        if (!forwardResult.success) {
+          console.error('[Payment] Token forward failed:', forwardResult.error);
+          // Still complete the payment but log the error
+          // Main terminal will eventually receive it via retry
+        }
+
+        completePayment(txId);
+
+        // Sync transaction to other terminals (for stats/reporting)
+        syncTransaction({
+          id: txId,
+          total: currentPayment.satsAmount,
+          items: [],
+          paymentMethod: 'cashu_nfc',
+          fiatAmount: currentPayment.fiatAmount,
+          fiatCurrency: currentPayment.fiatCurrency,
+          exchangeRate: currentPayment.exchangeRate,
+        }).catch(err => console.error('Failed to sync transaction:', err));
+
+      } else {
+        // Main terminal or standalone: swap tokens and store locally
+        const { proofs } = await swapTokens(mintUrl, parsed.token.proofs);
+
+        // Add to wallet with mint URL
+        addProofs(proofs, mintUrl);
+
+        completePayment(txId);
+
+        // Sync transaction to other terminals
+        if (currentPayment) {
+          syncTransaction({
+            id: txId,
+            total: currentPayment.satsAmount,
+            items: [],
+            paymentMethod: 'cashu_nfc',
+            fiatAmount: currentPayment.fiatAmount,
+            fiatCurrency: currentPayment.fiatCurrency,
+            exchangeRate: currentPayment.exchangeRate,
+          }).catch(err => console.error('Failed to sync transaction:', err));
+        }
+      }
+
       router.replace('/result');
     } catch (error) {
       console.error("Failed to receive token:", error);
@@ -257,7 +350,22 @@ export default function PaymentScreen() {
     updatePaymentState('processing');
 
     setTimeout(() => {
-      completePayment(`tx_${Date.now()}`);
+      const txId = `tx_${Date.now()}`;
+      completePayment(txId);
+
+      // Sync transaction to other terminals
+      if (currentPayment) {
+        syncTransaction({
+          id: txId,
+          total: currentPayment.satsAmount,
+          items: [],
+          paymentMethod: 'simulated',
+          fiatAmount: currentPayment.fiatAmount,
+          fiatCurrency: currentPayment.fiatCurrency,
+          exchangeRate: currentPayment.exchangeRate,
+        }).catch(err => console.error('Failed to sync transaction:', err));
+      }
+
       router.replace('/result');
     }, 1000);
   };

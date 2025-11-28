@@ -4,20 +4,27 @@
  * The main landing screen showing terminal status and quick actions.
  */
 
-import { useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/layout';
-import { Button, StatusDot } from '@/components/ui';
+import { StatusDot } from '@/components/ui';
+import { GlassCard } from '@/components/ui/GlassView';
 import { colors, spacing, typography } from '@/theme';
-import { useThemeColors } from '@/hooks/useThemeColors';
 import { useConfigStore } from '@/store/config.store';
+import { usePaymentStats } from '@/hooks/usePaymentStats';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { merchantName, terminalName, mints, currency, hasCompletedOnboarding } = useConfigStore();
-  const { width, height } = useWindowDimensions();
-  const themeColors = useThemeColors();
+  const { merchantName, terminalName, mints, currency, hasCompletedOnboarding, syncEnabled } = useConfigStore();
+  const { width } = useWindowDimensions();
+  const stats = usePaymentStats();
+  const [showStoreStats, setShowStoreStats] = useState(false);
+
+  // Current stats based on toggle (device or store-wide)
+  const currentStats = showStoreStats ? stats.store : stats.device;
 
   // Check if onboarding has been completed
   useEffect(() => {
@@ -33,35 +40,11 @@ export default function HomeScreen() {
   const hasMintConfigured = mints.trusted.length > 0;
   const isBitcoinOnly = currency.priceDisplayMode === 'sats_only';
   const isPhone = width < 768;
-  const isTabletPortrait = width >= 768 && width < 1024;
-  const isCompact = isPhone || isTabletPortrait;
 
   // Show loading while checking onboarding status
   if (!hasCompletedOnboarding) {
     return null;
   }
-
-  // TODO: Replace with actual data from payment store
-  const todayStats = {
-    sales: 1250.50,
-    transactions: 23,
-    satsReceived: 52500,
-  };
-
-  const weeklyStats = {
-    sales: 8450.75,
-    sats: 352500,
-    transactions: 142,
-    avgTransaction: 59.50,
-    avgSats: 2483,
-  };
-
-  const monthlyStats = {
-    sales: 32150.00,
-    sats: 1340000,
-    transactions: 587,
-    topProduct: 'Espresso',
-  };
 
   const handlePOS = () => {
     router.push('/pos');
@@ -79,143 +62,189 @@ export default function HomeScreen() {
     router.push('/history');
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.displayCurrency,
+    }).format(amount);
+  };
+
+  const formatSats = (amount: number) => {
+    return `⚡ ${amount.toLocaleString()}`;
+  };
+
   return (
     <Screen style={styles.screen}>
-      {/* Compact Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.merchantName}>{merchantName}</Text>
-          <Text style={styles.terminalName}>{terminalName}</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <View style={styles.statusItem}>
-            <StatusDot variant={hasMintConfigured ? 'success' : 'warning'} />
-            <Text style={styles.statusText}>
-              {hasMintConfigured ? 'Ready' : 'Setup'}
-            </Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.merchantName}>{merchantName}</Text>
+            <View style={styles.terminalBadge}>
+              <Ionicons name="terminal-outline" size={14} color={colors.text.muted} />
+              <Text style={styles.terminalName}>{terminalName}</Text>
+            </View>
           </View>
-          <Pressable onPress={handleSettings} style={styles.settingsIcon}>
-            <Text style={styles.settingsIconText}>⚙</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Stats Section */}
-      <View style={styles.statsSection}>
-        <Text style={styles.todayLabel}>Today</Text>
-        {isCompact ? (
-          // Compact: Simplified stats (Phone & Tablet Portrait)
-          <View style={styles.statsPhoneContainer}>
-            <View style={styles.statPhoneItem}>
-              <Text style={styles.statValueLarge}>
-                {isBitcoinOnly
-                  ? `₿${todayStats.satsReceived.toLocaleString()}`
-                  : `$${todayStats.sales.toFixed(2)}`}
-              </Text>
-              <Text style={styles.statLabelPhone}>sales</Text>
-            </View>
-            <View style={styles.statPhoneItem}>
-              <Text style={styles.statValuePhone}>{todayStats.transactions}</Text>
-              <Text style={styles.statLabelPhone}>transactions</Text>
-            </View>
-            {!isBitcoinOnly && (
-              <View style={styles.statPhoneItem}>
-                <Text style={styles.statValuePhone}>₿{todayStats.satsReceived.toLocaleString()}</Text>
-                <Text style={styles.statLabelPhone}>received</Text>
+          <View style={styles.headerRight}>
+            {syncEnabled && stats.hasSyncedData && (
+              <View style={[styles.statusItem, styles.syncStatus]}>
+                <Ionicons name="sync-outline" size={14} color={colors.accent.primary} />
+                <Text style={[styles.statusText, { color: colors.accent.primary }]}>
+                  Synced
+                </Text>
               </View>
             )}
-          </View>
-        ) : (
-          // Widescreen: Full stats row (Tablet Landscape & Desktop)
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValueLarge}>
-                {isBitcoinOnly
-                  ? `₿${todayStats.satsReceived.toLocaleString()}`
-                  : `$${todayStats.sales.toFixed(2)}`}
+            <View style={styles.statusItem}>
+              <StatusDot variant={hasMintConfigured ? 'success' : 'warning'} />
+              <Text style={styles.statusText}>
+                {hasMintConfigured ? 'Online' : 'Setup Required'}
               </Text>
-              <Text style={styles.statLabelInline}>sales</Text>
             </View>
-            <View style={styles.statSeparator} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValueMedium}>{todayStats.transactions}</Text>
-              <Text style={styles.statLabelInline}>transactions</Text>
-            </View>
-            {!isBitcoinOnly && (
-              <>
-                <View style={styles.statSeparator} />
-                <View style={styles.statItem}>
-                  <Text style={styles.statValueMedium}>₿{todayStats.satsReceived.toLocaleString()}</Text>
-                  <Text style={styles.statLabelInline}>received</Text>
-                </View>
-              </>
-            )}
+            <Pressable onPress={handleSettings} style={styles.settingsButton}>
+              <Ionicons name="settings-outline" size={24} color={colors.text.primary} />
+            </Pressable>
           </View>
-        )}
-      </View>
+        </View>
 
-      {/* Quick Actions */}
-      <View style={styles.actions}>
-        <Pressable
-          style={[styles.primaryAction, isCompact && styles.primaryActionPhone]}
-          onPress={handlePOS}
-        >
-          <Text style={[
-            styles.primaryActionTitle,
-            isCompact && styles.primaryActionTitlePhone,
-            { color: themeColors.accent }
-          ]}>
-            Point of Sale
-          </Text>
-          <Text style={styles.primaryActionSubtitle}>Full product catalog</Text>
+        {/* Hero / Main Action */}
+        <Pressable onPress={handlePOS} style={styles.heroContainer}>
+          <LinearGradient
+            colors={[colors.background.secondary, colors.background.tertiary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroGradient}
+          >
+            <View style={styles.heroContent}>
+              <View>
+                <Text style={styles.heroTitle}>Start New Sale</Text>
+                <Text style={styles.heroSubtitle}>Open Point of Sale Terminal</Text>
+              </View>
+              <View style={styles.heroIconContainer}>
+                <Ionicons name="grid-outline" size={32} color={colors.accent.primary} />
+              </View>
+            </View>
+          </LinearGradient>
         </Pressable>
 
-        <View style={styles.secondaryActions}>
-          <Pressable style={styles.secondaryAction} onPress={handleNewPayment}>
-            <Text style={styles.secondaryActionTitle}>
-              Quick Payment
-            </Text>
-          </Pressable>
-
-          <Pressable style={styles.secondaryAction} onPress={handleHistory}>
-            <Text style={styles.secondaryActionTitle}>
-              History
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Performance Overview */}
-      <View style={styles.summarySection}>
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryColumn}>
-            <Text style={styles.summaryLabel}>Week</Text>
-            <Text style={styles.summaryValue}>
-              {isBitcoinOnly
-                ? `₿${weeklyStats.sats.toLocaleString()}`
-                : `$${weeklyStats.sales.toLocaleString()}`}
-            </Text>
-          </View>
-          <View style={styles.summaryColumn}>
-            <Text style={styles.summaryLabel}>Month</Text>
-            <Text style={styles.summaryValue}>
-              {isBitcoinOnly
-                ? `₿${monthlyStats.sats.toLocaleString()}`
-                : `$${monthlyStats.sales.toLocaleString()}`}
-            </Text>
-          </View>
-          {!isCompact && (
-            <View style={styles.summaryColumn}>
-              <Text style={styles.summaryLabel}>Avg</Text>
-              <Text style={styles.summaryValue}>
-                {isBitcoinOnly
-                  ? `₿${weeklyStats.avgSats.toLocaleString()}`
-                  : `$${weeklyStats.avgTransaction.toFixed(0)}`}
-              </Text>
+        {/* Stats Toggle Header */}
+        <View style={styles.statsHeader}>
+          <Text style={styles.sectionTitleNoMargin}>Today&apos;s Overview</Text>
+          {stats.hasSyncedData && (
+            <View style={styles.statsToggle}>
+              <Pressable
+                style={[styles.toggleButton, !showStoreStats && styles.toggleButtonActive]}
+                onPress={() => setShowStoreStats(false)}
+              >
+                <Ionicons
+                  name="phone-portrait-outline"
+                  size={14}
+                  color={!showStoreStats ? colors.text.inverse : colors.text.muted}
+                />
+                <Text style={[styles.toggleText, !showStoreStats && styles.toggleTextActive]}>
+                  Device
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.toggleButton, showStoreStats && styles.toggleButtonActive]}
+                onPress={() => setShowStoreStats(true)}
+              >
+                <Ionicons
+                  name="storefront-outline"
+                  size={14}
+                  color={showStoreStats ? colors.text.inverse : colors.text.muted}
+                />
+                <Text style={[styles.toggleText, showStoreStats && styles.toggleTextActive]}>
+                  Store ({stats.terminalCount})
+                </Text>
+              </Pressable>
             </View>
           )}
         </View>
-      </View>
+
+        <View style={isPhone ? styles.statsGridPhone : styles.statsGrid}>
+          <GlassCard style={styles.statCard}>
+            <View style={styles.statIconBg}>
+              <Ionicons name="cash-outline" size={20} color={colors.accent.primary} />
+            </View>
+            <Text style={styles.statLabel}>Total Sales</Text>
+            <Text style={styles.statValue}>
+              {isBitcoinOnly ? formatSats(currentStats.today.sats) : formatCurrency(currentStats.today.sales)}
+            </Text>
+          </GlassCard>
+
+          <GlassCard style={styles.statCard}>
+            <View style={[styles.statIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+              <Ionicons name="receipt-outline" size={20} color={colors.accent.info} />
+            </View>
+            <Text style={styles.statLabel}>Transactions</Text>
+            <Text style={styles.statValue}>{currentStats.today.transactions}</Text>
+          </GlassCard>
+
+          <GlassCard style={styles.statCard}>
+            <View style={[styles.statIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+              <Ionicons name="flash-outline" size={20} color={colors.accent.warning} />
+            </View>
+            <Text style={styles.statLabel}>Sats Received</Text>
+            <Text style={styles.statValue}>{currentStats.today.sats.toLocaleString()}</Text>
+          </GlassCard>
+        </View>
+
+        {/* Quick Actions */}
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.actionsGrid}>
+          <Pressable style={styles.actionButton} onPress={handleNewPayment}>
+            <GlassCard style={styles.actionCard}>
+              <Ionicons name="keypad-outline" size={28} color={colors.text.primary} />
+              <Text style={styles.actionLabel}>Quick Pay</Text>
+            </GlassCard>
+          </Pressable>
+
+          <Pressable style={styles.actionButton} onPress={handleHistory}>
+            <GlassCard style={styles.actionCard}>
+              <Ionicons name="time-outline" size={28} color={colors.text.primary} />
+              <Text style={styles.actionLabel}>History</Text>
+            </GlassCard>
+          </Pressable>
+
+          <Pressable style={styles.actionButton} onPress={() => router.push('/refund/search')}>
+            <GlassCard style={styles.actionCard}>
+              <Ionicons name="return-down-back-outline" size={28} color={colors.text.primary} />
+              <Text style={styles.actionLabel}>Refund</Text>
+            </GlassCard>
+          </Pressable>
+        </View>
+
+        {/* Performance Summary */}
+        <Text style={styles.sectionTitle}>
+          {showStoreStats && stats.hasSyncedData ? 'Store Performance' : 'Performance'}
+        </Text>
+        <GlassCard style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>This Week</Text>
+              <Text style={styles.summaryValue}>
+                {isBitcoinOnly ? formatSats(currentStats.week.sats) : formatCurrency(currentStats.week.sales)}
+              </Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>This Month</Text>
+              <Text style={styles.summaryValue}>
+                {isBitcoinOnly ? formatSats(currentStats.month.sats) : formatCurrency(currentStats.month.sales)}
+              </Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Avg. Ticket</Text>
+              <Text style={styles.summaryValue}>
+                {isBitcoinOnly ? formatSats(Math.round(currentStats.week.avgSats)) : formatCurrency(currentStats.week.avgTransaction)}
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </Screen>
   );
 }
@@ -223,18 +252,28 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    padding: spacing.xl,
+    backgroundColor: colors.background.primary,
+  },
+  contentContainer: {
+    padding: 0,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xxxl,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    marginBottom: spacing.xl,
   },
   merchantName: {
     ...typography.h3,
     color: colors.text.primary,
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  terminalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   terminalName: {
     ...typography.bodySmall,
@@ -249,148 +288,191 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    backgroundColor: colors.background.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  syncStatus: {
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    borderColor: 'rgba(74, 222, 128, 0.3)',
   },
   statusText: {
-    ...typography.bodySmall,
+    ...typography.caption,
     color: colors.text.secondary,
     fontWeight: '600',
   },
-  settingsIcon: {
+  settingsButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     backgroundColor: colors.background.secondary,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border.default,
   },
-  settingsIconText: {
-    fontSize: 24,
-    color: colors.text.primary,
+  heroContainer: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.xxl,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
-  statsSection: {
-    marginBottom: spacing.xxxl,
+  heroGradient: {
+    padding: spacing.xl,
   },
-  todayLabel: {
-    ...typography.caption,
-    color: colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    fontSize: 11,
-    marginBottom: spacing.md,
-  },
-  statsRow: {
+  heroContent: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  statItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.sm,
-  },
-  statsPhoneContainer: {
-    gap: spacing.lg,
-  },
-  statPhoneItem: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.sm,
-  },
-  statSeparator: {
-    width: 1,
-    height: 40,
-    backgroundColor: colors.border.default,
-    marginHorizontal: spacing.md,
-  },
-  statValueLarge: {
-    ...typography.h1,
-    color: colors.text.primary,
-    fontSize: 36,
-  },
-  statValueMedium: {
+  heroTitle: {
     ...typography.h2,
     color: colors.text.primary,
-    fontSize: 28,
+    marginBottom: 4,
   },
-  statValuePhone: {
-    ...typography.h3,
-    color: colors.text.primary,
-    fontSize: 24,
-  },
-  statLabelInline: {
-    ...typography.bodySmall,
-    color: colors.text.muted,
-  },
-  statLabelPhone: {
-    ...typography.bodySmall,
-    color: colors.text.muted,
-  },
-  actions: {
-    flex: 1,
-    gap: spacing.md,
-  },
-  primaryAction: {
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
-    backgroundColor: colors.background.secondary,
-    borderRadius: 20,
-  },
-  primaryActionPhone: {
-    paddingVertical: spacing.huge,
-    minHeight: 140,
-  },
-  primaryActionTitle: {
-    ...typography.h1,
-    fontSize: 32,
-    marginBottom: spacing.xs,
-  },
-  primaryActionTitlePhone: {
-    fontSize: 40,
-    marginBottom: spacing.sm,
-  },
-  primaryActionSubtitle: {
+  heroSubtitle: {
     ...typography.body,
     color: colors.text.secondary,
   },
-  secondaryActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  secondaryAction: {
-    flex: 1,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.background.secondary,
-    borderRadius: 16,
+  heroIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryActionTitle: {
+  sectionTitle: {
     ...typography.h4,
     color: colors.text.primary,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xl,
   },
-  summarySection: {
-    marginTop: 'auto',
-    paddingTop: spacing.xl,
+  sectionTitleNoMargin: {
+    ...typography.h4,
+    color: colors.text.primary,
+    paddingHorizontal: spacing.xl,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  statsToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 20,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.accent.primary,
+  },
+  toggleText: {
+    ...typography.caption,
+    color: colors.text.muted,
+    fontWeight: '600',
+  },
+  toggleTextActive: {
+    color: colors.text.inverse,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.xxl,
+  },
+  statsGridPhone: {
+    flexDirection: 'column',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.xxl,
+  },
+  statCard: {
+    flex: 1,
+    padding: spacing.lg,
+    alignItems: 'flex-start',
+  },
+  statIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.text.muted,
+    marginBottom: 4,
+  },
+  statValue: {
+    ...typography.h3,
+    color: colors.text.primary,
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.xxl,
+  },
+  actionButton: {
+    flex: 1,
+  },
+  actionCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+    gap: spacing.sm,
+    height: 100,
+  },
+  actionLabel: {
+    ...typography.bodySmall,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  summaryCard: {
+    marginHorizontal: spacing.xl,
+    padding: spacing.lg,
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: spacing.xxl,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  summaryColumn: {
+  summaryItem: {
     flex: 1,
+    alignItems: 'center',
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border.default,
   },
   summaryLabel: {
     ...typography.caption,
     color: colors.text.muted,
-    textTransform: 'uppercase',
-    fontSize: 10,
-    letterSpacing: 1.5,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   summaryValue: {
-    ...typography.h3,
-    color: colors.text.secondary,
-    fontSize: 20,
+    ...typography.h4,
+    color: colors.text.primary,
   },
 });

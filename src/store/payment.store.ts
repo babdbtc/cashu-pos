@@ -13,6 +13,7 @@ import type {
   PaymentState,
   OverpaymentInfo,
 } from '@/types/payment';
+import { useConfigStore } from './config.store';
 
 export type PaymentMethod = 'cashu' | 'lightning';
 
@@ -72,6 +73,9 @@ interface PaymentStore {
 
   // Helpers
   getCurrentPayment: () => Payment | null;
+
+  // Sync
+  addSyncedPayment: (payment: Payment) => void;
 }
 
 // Generate unique payment ID
@@ -120,9 +124,13 @@ export const usePaymentStore = create<PaymentStore>()(
         // Generate ID synchronously using timestamp + random
         const id = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
+        // Get current terminal ID
+        const { terminalId } = useConfigStore.getState();
+
         const payment: Payment = {
           id,
           state: 'amount_entered',
+          terminalId: terminalId || undefined,
           requestedAmount: params.satsAmount,
           requestedCurrency: 'sat',
           satsAmount: params.satsAmount,
@@ -243,6 +251,27 @@ export const usePaymentStore = create<PaymentStore>()(
       },
 
       getCurrentPayment: () => get().currentPayment,
+
+      addSyncedPayment: (payment: Payment) => {
+        set((store) => {
+          // Check if payment already exists
+          if (store.recentPayments.some(p => p.id === payment.id)) {
+            console.log('[Payment Store] Payment already exists:', payment.id);
+            return store;
+          }
+
+          // Add to recent payments, sorted by date (newest first)
+          const recentPayments = [
+            payment,
+            ...store.recentPayments,
+          ]
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, MAX_RECENT_PAYMENTS);
+
+          console.log('[Payment Store] Added synced payment:', payment.id);
+          return { recentPayments };
+        });
+      },
     }),
     {
       name: 'cashupay-payments',

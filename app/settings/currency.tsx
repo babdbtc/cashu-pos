@@ -13,13 +13,16 @@ import {
   ScrollView,
   Switch,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useConfigStore } from '../../src/store/config.store';
 
 import { CURRENCIES } from '@/constants/currencies';
 
 export default function CurrencySettingsScreen() {
+  const router = useRouter();
   const currency = useConfigStore((state) => state.currency);
   const setDisplayCurrency = useConfigStore((state) => state.setDisplayCurrency);
   const setPriceDisplayMode = useConfigStore((state) => state.setPriceDisplayMode);
@@ -39,7 +42,12 @@ export default function CurrencySettingsScreen() {
 
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView}>
         {/* Display Options */}
         <View style={styles.section}>
@@ -193,6 +201,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

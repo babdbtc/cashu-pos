@@ -20,7 +20,7 @@ CashuPay uses [Nostr](https://nostr.com/) relays to synchronize data between mul
 └─────────────────────────────────────────────────┘
           ▲             ▲             ▲
           │             │             │
-    ┌─────┴─────┐ ┌─────┴─────┐ ┌─────┴─────┐
+    ┌─────┴─────┐  ┌─────┴─────┐  ┌─────┴─────┐
     │ Terminal 1 │ │ Terminal 2 │ │ Terminal 3 │
     │  (Main)    │ │   (Sub)    │ │   (Sub)    │
     │            │ │            │ │            │

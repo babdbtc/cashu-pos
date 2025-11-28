@@ -5,13 +5,16 @@
  */
 
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@/theme';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useConfigStore } from '@/store/config.store';
 import type { BusinessType } from '@/types/config';
 
 export default function BusinessTypeSettingsScreen() {
+  const router = useRouter();
   const businessType = useConfigStore((state) => state.businessType);
   const setBusinessType = useConfigStore((state) => state.setBusinessType);
   const themeColors = useThemeColors();
@@ -76,7 +79,12 @@ export default function BusinessTypeSettingsScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back Button */}
+      <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={28} color="#fff" />
+      </Pressable>
+
       <ScrollView style={styles.scrollView}>
         {/* Current Business Type */}
         <View style={styles.section}>
@@ -157,6 +165,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  backButton: {
+    padding: 12,
+    paddingLeft: 8,
   },
   scrollView: {
     flex: 1,

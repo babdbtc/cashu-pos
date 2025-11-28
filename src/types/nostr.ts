@@ -35,6 +35,18 @@ export const EventKinds = {
 
   // Sync control
   SYNC_CHECKPOINT: 30900, // Last sync timestamp per terminal
+
+  // Settings sync
+  SETTINGS_SYNC: 30910, // Merchant-wide settings (mints, currency, etc.)
+
+  // Device management
+  JOIN_REQUEST: 30950, // Sub-terminal requests to join network
+  JOIN_APPROVAL: 30951, // Main terminal approves/denies join request
+  DEVICE_REVOKE: 30952, // Main terminal revokes a device's access
+
+  // Token forwarding (sub-terminal -> main terminal)
+  TOKEN_FORWARD: 30960, // Encrypted token from sub-terminal to main
+  TOKEN_RECEIVED: 30961, // Main terminal acknowledges receipt
 } as const;
 
 // Merchant metadata
@@ -116,11 +128,98 @@ export interface SyncStatus {
   errors: SyncError[];
 }
 
+// Join request (sub-terminal -> main terminal)
+export interface JoinRequest {
+  terminalId: string;
+  terminalName: string;
+  terminalPubkey: string;
+  merchantId: string;
+  requestedAt: number;
+}
+
+// Join approval (main terminal -> network)
+export interface JoinApproval {
+  terminalId: string;
+  terminalPubkey: string;
+  merchantId: string;
+  approved: boolean;
+  approvedBy: string; // main terminal ID
+  approvedAt: number;
+}
+
+// Approved device record
+export interface ApprovedDevice {
+  terminalId: string;
+  terminalName: string;
+  terminalPubkey: string;
+  terminalType: 'main' | 'sub';
+  approvedAt: number;
+  lastSeen?: number;
+}
+
+// Merchant-wide settings sync
+export interface SettingsSyncEvent {
+  merchantId: string;
+  merchantName: string;
+  businessType: string;
+  mints: {
+    trusted: Array<{ url: string; name: string; isDefault: boolean }>;
+    primaryMintUrl: string;
+  };
+  currency: {
+    displayCurrency: string;
+    priceDisplayMode: string;
+    satsDisplayFormat: string;
+    showSatsBelow: boolean;
+  };
+  change: {
+    autoAcceptTipThreshold: number;
+    forceChangeThreshold: number;
+    changeTokenExpiry: number;
+  };
+  security: {
+    requirePinForRefunds: boolean;
+    requirePinForSettings: boolean;
+    maxPaymentAmount: number;
+    dailyLimit: number;
+  };
+  updatedAt: number;
+  updatedBy: string; // terminalId
+  version: number;
+}
+
 export interface SyncError {
   eventId: string;
   error: string;
   timestamp: number;
   retryCount: number;
+}
+
+// Token forwarding from sub-terminal to main terminal
+export interface TokenForwardEvent {
+  id: string; // Unique ID for this forward
+  transactionId: string; // Related transaction ID
+  terminalId: string; // Sub-terminal that received the payment
+  terminalName: string;
+  merchantId: string;
+  token: string; // The raw cashu token (encrypted in transit)
+  amount: number; // Amount in sats
+  fiatAmount?: number;
+  fiatCurrency?: string;
+  paymentMethod: string;
+  mintUrl: string;
+  createdAt: number;
+}
+
+// Main terminal acknowledgment of received token
+export interface TokenReceivedEvent {
+  forwardId: string; // ID of the TOKEN_FORWARD event
+  transactionId: string;
+  terminalId: string; // Sub-terminal that sent it
+  receivedAt: number;
+  success: boolean;
+  error?: string;
+  newBalance?: number; // Updated main terminal balance
 }
 
 // Relay configuration
@@ -134,8 +233,8 @@ export interface RelayConfig {
 export const DEFAULT_RELAYS: RelayConfig[] = [
   { url: 'wss://relay.damus.io', read: true, write: true, enabled: true },
   { url: 'wss://nos.lol', read: true, write: true, enabled: true },
-  { url: 'wss://relay.nostr.band', read: true, write: true, enabled: true },
-  { url: 'wss://nostr.wine', read: true, write: true, enabled: true },
+  { url: 'wss://relay.primal.net', read: true, write: true, enabled: true },
+  { url: 'wss://purplepag.es', read: true, write: false, enabled: true },
 ];
 
 // Subscription filters

@@ -198,7 +198,7 @@ export default function OnboardingScreen() {
             Main Terminal
           </Text>
           <Text style={styles.typeOptionDescription}>
-            Full access to settings and admin functions. Other terminals can connect to this one.
+            Full access to settings and admin functions. Primary device for your store.
           </Text>
         </Pressable>
 
@@ -207,22 +207,20 @@ export default function OnboardingScreen() {
             styles.typeOption,
             terminalType === 'sub' && styles.typeOptionActive,
             terminalType === 'sub' && { borderColor: themeColors.accent },
-            styles.typeOptionDisabled,
           ]}
-          disabled
+          onPress={() => setTerminalType('sub')}
         >
           <Text style={styles.typeOptionEmoji}>📱</Text>
           <Text
             style={[
               styles.typeOptionTitle,
               terminalType === 'sub' && { color: themeColors.accent },
-              styles.typeOptionTitleDisabled,
             ]}
           >
-            Sub-Terminal (Coming Soon)
+            Sub-Terminal
           </Text>
           <Text style={styles.typeOptionDescription}>
-            Connects to main terminal for sync. Limited settings access.
+            Syncs with other terminals via Nostr. Use for additional registers.
           </Text>
         </Pressable>
       </View>

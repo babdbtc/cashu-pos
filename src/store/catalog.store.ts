@@ -17,7 +17,7 @@ import type {
   InventoryInfo,
 } from '@/types/catalog';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { syncProductChange } from '@/services/sync-integration';
+import { syncProductChange, syncProductDeletion, syncCategoryChange, syncCategoryDeletion } from '@/services/sync-integration';
 
 interface CatalogState {
   // Data
@@ -235,6 +235,11 @@ export const useCatalogStore = create<CatalogState>()(
             categories: [...state.categories, newCategory],
           }));
 
+          // Sync to other terminals via Nostr
+          syncCategoryChange(newCategory).catch(err =>
+            console.error('[Catalog] Failed to sync new category:', err)
+          );
+
           return newCategory;
         }
 
@@ -253,6 +258,11 @@ export const useCatalogStore = create<CatalogState>()(
           categories: [...state.categories, data],
         }));
 
+        // Sync to other terminals via Nostr
+        syncCategoryChange(data).catch(err =>
+          console.error('[Catalog] Failed to sync new category:', err)
+        );
+
         return data;
       },
 
@@ -264,6 +274,15 @@ export const useCatalogStore = create<CatalogState>()(
               c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
             ),
           }));
+
+          // Sync to other terminals via Nostr
+          const updatedCategory = get().categories.find(c => c.id === id);
+          if (updatedCategory) {
+            syncCategoryChange(updatedCategory).catch(err =>
+              console.error('[Catalog] Failed to sync category update:', err)
+            );
+          }
+
           return;
         }
 
@@ -279,6 +298,14 @@ export const useCatalogStore = create<CatalogState>()(
             c.id === id ? { ...c, ...updates } : c
           ),
         }));
+
+        // Sync to other terminals via Nostr
+        const updatedCategory = get().categories.find(c => c.id === id);
+        if (updatedCategory) {
+          syncCategoryChange(updatedCategory).catch(err =>
+            console.error('[Catalog] Failed to sync category update:', err)
+          );
+        }
       },
 
       // Delete category
@@ -287,6 +314,12 @@ export const useCatalogStore = create<CatalogState>()(
           set((state) => ({
             categories: state.categories.filter((c) => c.id !== id),
           }));
+
+          // Sync deletion to other terminals via Nostr
+          syncCategoryDeletion(id).catch(err =>
+            console.error('[Catalog] Failed to sync category deletion:', err)
+          );
+
           return;
         }
 
@@ -300,6 +333,11 @@ export const useCatalogStore = create<CatalogState>()(
         set((state) => ({
           categories: state.categories.filter((c) => c.id !== id),
         }));
+
+        // Sync deletion to other terminals via Nostr
+        syncCategoryDeletion(id).catch(err =>
+          console.error('[Catalog] Failed to sync category deletion:', err)
+        );
       },
 
       // Reorder categories
@@ -431,6 +469,12 @@ export const useCatalogStore = create<CatalogState>()(
           set((state) => ({
             products: state.products.filter((p) => p.id !== id),
           }));
+
+          // Sync deletion to other terminals via Nostr
+          syncProductDeletion(id).catch(err =>
+            console.error('[Catalog] Failed to sync product deletion:', err)
+          );
+
           return;
         }
 
@@ -444,6 +488,11 @@ export const useCatalogStore = create<CatalogState>()(
         set((state) => ({
           products: state.products.filter((p) => p.id !== id),
         }));
+
+        // Sync deletion to other terminals via Nostr
+        syncProductDeletion(id).catch(err =>
+          console.error('[Catalog] Failed to sync product deletion:', err)
+        );
       },
 
       // Reorder products

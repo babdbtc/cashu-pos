@@ -11,12 +11,19 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 import { colors } from '@/theme';
 import { ToastProvider } from '@/hooks/useToast';
 import { AlertProvider } from '@/hooks/useAlert';
+import { useSyncAutoEnable } from '@/hooks/useSyncAutoEnable';
+import { useTokenForwardInit } from '@/hooks/useTokenForwardInit';
 
 export default function RootLayout() {
+  // Auto-enable sync for approved devices
+  useSyncAutoEnable();
+
+  // Initialize token forwarding service (main terminals receive, sub-terminals forward)
+  useTokenForwardInit();
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
@@ -43,6 +50,20 @@ export default function RootLayout() {
               name="result"
               options={{
                 gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="settings"
+              options={{
+                headerShown: false,
+                presentation: Platform.OS === 'ios' ? 'card' : 'modal',
+              }}
+            />
+            <Stack.Screen
+              name="admin"
+              options={{
+                headerShown: false,
+                presentation: Platform.OS === 'ios' ? 'card' : 'modal',
               }}
             />
           </Stack>
