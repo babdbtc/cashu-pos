@@ -2,12 +2,38 @@
  * Configuration types for the POS terminal
  */
 
+export type BusinessType = 'retail' | 'restaurant' | 'service' | 'general';
+
+export type TerminalType = 'main' | 'sub';
+
+export interface TerminalConfig {
+  terminalId: string;
+  terminalName: string;
+  terminalType: TerminalType;
+  // For sub-terminals: connection to main terminal
+  mainTerminalId?: string;
+  // Nostr pubkey of main terminal (for sync)
+  mainTerminalPubkey?: string;
+}
+
+export interface MerchantConfig {
+  merchantId: string;
+  merchantName: string;
+  businessType: BusinessType;
+}
+
 export interface AppConfig {
   // Terminal identity
   terminalId: string;
   terminalName: string;
+  terminalType: TerminalType;
+  mainTerminalId?: string;
+  mainTerminalPubkey?: string;
+
+  // Merchant identity
   merchantId: string;
   merchantName: string;
+  businessType: BusinessType;
 
   // Mint configuration
   mints: MintConfig;

@@ -15,6 +15,8 @@ import type {
   ChangeConfig,
   SecurityConfig,
   SettlementMode,
+  BusinessType,
+  TerminalType,
 } from '@/types/config';
 
 // Secure storage adapter for Zustand persist
@@ -30,16 +32,28 @@ const secureStorage = {
   },
 };
 
+export interface AppearanceConfig {
+  accentColor: string;
+  theme: 'dark' | 'light';
+}
+
 interface ConfigState {
   // Initialization state
   isInitialized: boolean;
   isLoading: boolean;
+  hasCompletedOnboarding: boolean;
 
   // Terminal identity
   terminalId: string | null;
   terminalName: string;
+  terminalType: TerminalType;
+  mainTerminalId: string | null;
+  mainTerminalPubkey: string | null;
+
+  // Merchant identity
   merchantId: string | null;
   merchantName: string;
+  businessType: BusinessType;
 
   // Mint configuration
   mints: MintConfig;
@@ -50,15 +64,21 @@ interface ConfigState {
   settlement: SettlementConfig;
   change: ChangeConfig;
   security: SecurityConfig;
+  appearance: AppearanceConfig;
 
   // Actions
   initialize: () => Promise<void>;
+  completeOnboarding: () => void;
   setTerminalInfo: (info: {
     terminalId: string;
     terminalName: string;
+    terminalType: TerminalType;
+    mainTerminalId?: string;
+    mainTerminalPubkey?: string;
     merchantId: string;
     merchantName: string;
   }) => void;
+  setBusinessType: (businessType: BusinessType) => void;
   setMintConfig: (config: Partial<MintConfig>) => void;
   addTrustedMint: (url: string, name: string) => void;
   removeTrustedMint: (url: string) => void;
@@ -68,6 +88,9 @@ interface ConfigState {
   setSettlementConfig: (config: SettlementConfig) => void;
   setChangeConfig: (config: Partial<ChangeConfig>) => void;
   setSecurityConfig: (config: Partial<SecurityConfig>) => void;
+  setAppearanceConfig: (config: Partial<AppearanceConfig>) => void;
+  setAccentColor: (color: string) => void;
+  setTheme: (theme: 'dark' | 'light') => void;
   resetToDefaults: () => void;
 
   // Currency-specific actions
@@ -125,10 +148,15 @@ export const useConfigStore = create<ConfigState>()(
       // Initial state
       isInitialized: false,
       isLoading: false,
+      hasCompletedOnboarding: false,
       terminalId: null,
       terminalName: 'Terminal 1',
+      terminalType: 'main',
+      mainTerminalId: null,
+      mainTerminalPubkey: null,
       merchantId: null,
       merchantName: 'My Store',
+      businessType: 'general',
       mints: defaultMintConfig,
       currency: {
         displayCurrency: 'USD',
@@ -195,6 +223,10 @@ export const useConfigStore = create<ConfigState>()(
           amountPerHour: 1000000,
         },
       },
+      appearance: {
+        accentColor: '#4ade80',
+        theme: 'dark',
+      },
 
       // Actions
       initialize: async () => {
@@ -203,13 +235,24 @@ export const useConfigStore = create<ConfigState>()(
         set({ isInitialized: true, isLoading: false });
       },
 
+      completeOnboarding: () => {
+        set({ hasCompletedOnboarding: true });
+      },
+
       setTerminalInfo: (info) => {
         set({
           terminalId: info.terminalId,
           terminalName: info.terminalName,
+          terminalType: info.terminalType,
+          mainTerminalId: info.mainTerminalId || null,
+          mainTerminalPubkey: info.mainTerminalPubkey || null,
           merchantId: info.merchantId,
           merchantName: info.merchantName,
         });
+      },
+
+      setBusinessType: (businessType) => {
+        set({ businessType });
       },
 
       setMintConfig: (config) => {
@@ -344,6 +387,10 @@ export const useConfigStore = create<ConfigState>()(
               amountPerHour: 1000000,
             },
           },
+          appearance: {
+            accentColor: '#4ade80',
+            theme: 'dark',
+          },
         });
       },
 
@@ -446,6 +493,25 @@ export const useConfigStore = create<ConfigState>()(
           security: { ...state.security, dailyTransactionLimit: amount },
         }));
       },
+
+      // Appearance-specific actions
+      setAppearanceConfig: (config) => {
+        set((state) => ({
+          appearance: { ...state.appearance, ...config },
+        }));
+      },
+
+      setAccentColor: (color) => {
+        set((state) => ({
+          appearance: { ...state.appearance, accentColor: color },
+        }));
+      },
+
+      setTheme: (theme) => {
+        set((state) => ({
+          appearance: { ...state.appearance, theme },
+        }));
+      },
     }),
     {
       name: 'cashupay-config',
@@ -453,14 +519,20 @@ export const useConfigStore = create<ConfigState>()(
       partialize: (state) => ({
         terminalId: state.terminalId,
         terminalName: state.terminalName,
+        terminalType: state.terminalType,
+        mainTerminalId: state.mainTerminalId,
+        mainTerminalPubkey: state.mainTerminalPubkey,
         merchantId: state.merchantId,
         merchantName: state.merchantName,
+        businessType: state.businessType,
         mints: state.mints,
         currency: state.currency,
         offline: state.offline,
         settlement: state.settlement,
         change: state.change,
         security: state.security,
+        appearance: state.appearance,
+        hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),
     }
   )

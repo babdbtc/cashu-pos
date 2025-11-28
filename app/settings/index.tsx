@@ -68,6 +68,28 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Business Configuration */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Business</Text>
+
+          <SettingsSection
+            title="Business Type"
+            description="Customize features for your business type"
+            href="/settings/business"
+          />
+        </View>
+
+        {/* Multi-Terminal Sync */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Multi-Terminal</Text>
+
+          <SettingsSection
+            title="Sync Settings"
+            description="Configure multi-terminal sync via Nostr"
+            href="/settings/sync"
+          />
+        </View>
+
         {/* Catalog Management */}
         <View style={styles.group}>
           <Text style={styles.groupTitle}>Catalog</Text>
@@ -89,6 +111,17 @@ export default function SettingsScreen() {
             description="Configure trusted mints for receiving payments"
             href="/settings/mint"
             value={`${trustedMints.length} mint${trustedMints.length !== 1 ? 's' : ''}`}
+          />
+        </View>
+
+        {/* Appearance */}
+        <View style={styles.group}>
+          <Text style={styles.groupTitle}>Appearance</Text>
+
+          <SettingsSection
+            title="Theme & Colors"
+            description="Customize your terminal's appearance"
+            href="/settings/appearance"
           />
         </View>
 

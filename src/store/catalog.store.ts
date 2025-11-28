@@ -17,6 +17,7 @@ import type {
   InventoryInfo,
 } from '@/types/catalog';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { syncProductChange } from '@/services/sync-integration';
 
 interface CatalogState {
   // Data
@@ -348,6 +349,11 @@ export const useCatalogStore = create<CatalogState>()(
             products: [...state.products, newProduct],
           }));
 
+          // Sync to other terminals via Nostr
+          syncProductChange(newProduct).catch(err =>
+            console.error('[Catalog] Failed to sync new product:', err)
+          );
+
           return newProduct;
         }
 
@@ -369,6 +375,11 @@ export const useCatalogStore = create<CatalogState>()(
           products: [...state.products, data],
         }));
 
+        // Sync to other terminals via Nostr
+        syncProductChange(data).catch(err =>
+          console.error('[Catalog] Failed to sync new product:', err)
+        );
+
         return data;
       },
 
@@ -380,6 +391,15 @@ export const useCatalogStore = create<CatalogState>()(
               p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
             ),
           }));
+
+          // Sync to other terminals via Nostr
+          const updatedProduct = get().products.find(p => p.id === id);
+          if (updatedProduct) {
+            syncProductChange(updatedProduct).catch(err =>
+              console.error('[Catalog] Failed to sync product update:', err)
+            );
+          }
+
           return;
         }
 
@@ -395,6 +415,14 @@ export const useCatalogStore = create<CatalogState>()(
             p.id === id ? { ...p, ...updates } : p
           ),
         }));
+
+        // Sync to other terminals via Nostr
+        const updatedProduct = get().products.find(p => p.id === id);
+        if (updatedProduct) {
+          syncProductChange(updatedProduct).catch(err =>
+            console.error('[Catalog] Failed to sync product update:', err)
+          );
+        }
       },
 
       // Delete product
