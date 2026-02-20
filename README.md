@@ -47,55 +47,6 @@ A self-hosted payment processing system using Cashu ecash, enabling Lightning-co
 
 The tradeoff is clear: Cashu sacrifices self-custody for better UX. For small-to-medium payments, this is often acceptable.
 
-## Project Structure
-
-```
-cashu-pos/
-├── app/                    # Screens (Expo Router)
-│   ├── index.tsx           # Home screen
-│   ├── onboarding.tsx      # Initial setup flow
-│   ├── amount.tsx          # Amount entry
-│   ├── payment.tsx         # NFC/Lightning payment
-│   ├── result.tsx          # Payment result
-│   ├── pos/                # POS catalog & checkout
-│   ├── admin/              # Admin dashboard (deposit, withdraw, export)
-│   ├── settings/           # Configuration screens
-│   ├── history/            # Transaction history
-│   └── refund/             # Refund processing
-├── src/
-│   ├── components/         # UI components
-│   ├── services/           # Business logic
-│   │   ├── cashu.service.ts
-│   │   ├── nfc.service.ts
-│   │   ├── payment-processor.service.ts
-│   │   ├── exchange-rate.service.ts
-│   │   ├── receipt.service.ts
-│   │   ├── refund.service.ts
-│   │   ├── nostr.service.ts         # Nostr relay client
-│   │   ├── sync.service.ts          # Multi-terminal sync
-│   │   ├── sync-integration.ts      # Store bridge
-│   │   ├── database.service.ts      # SQLite local storage
-│   │   ├── device-approval.service.ts
-│   │   ├── feedback.service.ts
-│   │   ├── logger.service.ts
-│   │   ├── offline-queue.service.ts
-│   │   ├── order.service.ts
-│   │   ├── seed.service.ts
-│   │   └── token-forward.service.ts
-│   ├── store/              # Zustand state management
-│   ├── types/              # TypeScript interfaces
-│   └── theme/              # Design tokens
-├── docs/                   # Technical documentation (18+ detailed guides)
-│   ├── 01-cashu-protocol.md
-│   ├── 02-nfc-payment-flow.md
-│   ├── 03-system-architecture.md
-│   ├── ARCHITECTURE.md
-│   ├── NOSTR-SYNC.md
-│   ├── IMPLEMENTATION_SUMMARY.md
-│   ├── UX_IMPROVEMENTS.md
-│   └── ...
-└── README.md
-```
 
 ## Quick Start
 
