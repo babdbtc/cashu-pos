@@ -24,15 +24,15 @@ A self-hosted payment processing system using Cashu ecash, enabling Lightning-co
 
 | Home Screen | POS Interface |
 |:---:|:---:|
-| ![Home Screen](docs/images/index.png) | ![POS Interface](docs/images/point-of-sale.png) |
+| ![Home Screen](images/index.png) | ![POS Interface](images/point-of-sale.png) |
 
 | Checkout | Payment Processing |
 |:---:|:---:|
-| ![Checkout](docs/images/checkout.png) | ![Payment Processing](docs/images/payment-await.png) |
+| ![Checkout](images/checkout.png) | ![Payment Processing](images/payment-await.png) |
 
 | Admin Dashboard | Sync Settings |
 |:---:|:---:|
-| ![Admin Dashboard](docs/images/admin-dashboard.png) | ![Sync Settings](docs/images/sync-settings.png) |
+| ![Admin Dashboard](images/admin-dashboard.png) | ![Sync Settings](images/sync-settings.png) |
 
 ## Why Cashu for Payments?
 
@@ -127,8 +127,6 @@ The app connects to these public Nostr relays:
 - `wss://nos.lol`
 - `wss://relay.nostr.band`
 - `wss://nostr.wine`
-
-For detailed technical documentation, see [docs/NOSTR-SYNC.md](docs/NOSTR-SYNC.md).
 
 ### Testing Payments
 
