@@ -1,3 +1,5 @@
+
+
 # Cashu Point of Sale system
 
 A self-hosted payment processing system using Cashu ecash, enabling Lightning-compatible payments with NFC tap-to-pay support.
@@ -53,7 +55,7 @@ The tradeoff is clear: Cashu sacrifices self-custody for better UX. For small-to
 ### Prerequisites
 
 - Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
+- npm (included with Node.js; global Expo CLI is not required)
 - iOS/Android device or emulator (NFC requires physical device)
 
 ### Installation
